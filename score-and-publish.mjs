@@ -175,7 +175,10 @@ function parseObsidianTable() {
 
   for (const line of content.split('\n')) {
     // Extract URL from any table row containing [View](URL)
-    const urlMatch = line.match(/\[View\]\(([^)]+)\)/);
+    // Match [View](URL) requiring `)` followed by table cell delimiter `|`,
+    // so URLs containing literal parens (ZipRecruiter `(USA)`,
+    // `(Business-Cards-&-Payments)`, etc.) aren't truncated at the first inner `)`.
+    const urlMatch = line.match(/\[View\]\((.*?)\)\s*\|/);
     if (!urlMatch || !line.startsWith('|')) continue;
 
     const url = urlMatch[1].trim();

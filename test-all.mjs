@@ -79,9 +79,61 @@ for (const { name, allowFail } of scripts) {
   }
 }
 
-// ── 3. LIVENESS CLASSIFICATION ──────────────────────────────────
+// ── 3. URL EXTRACTION REGEX ─────────────────────────────────────
 
-console.log('\n3. Liveness classification');
+console.log('\n3. URL extraction (paren-in-URL safety)');
+
+// Same regex used by reconcile-scores.mjs and score-and-publish.mjs.
+// Test ensures URLs with literal parens (ZipRecruiter, Walmart, etc.)
+// are not truncated at the first inner `)`.
+const URL_REGEX = /\[View\]\((.*?)\)\s*\|/;
+
+const urlTests = [
+  {
+    name: 'ZipRecruiter URL with (Business-Cards) parens',
+    line: '| 4.0 |  | Capital One | Sr Mgr | Director | AI/ML | [View](https://www.ziprecruiter.com/c/Capital-One/Job/Sr-Mgr-(Business-Cards-&-Payments)/-in-McLean,VA?jid=abc123) | 🔲 New | — | 2026-04-30 |',
+    expected: 'https://www.ziprecruiter.com/c/Capital-One/Job/Sr-Mgr-(Business-Cards-&-Payments)/-in-McLean,VA?jid=abc123',
+  },
+  {
+    name: 'ZipRecruiter URL with (USA) prefix',
+    line: '| 3.5 |  | Walmart | Principal | Director | Data | [View](https://www.ziprecruiter.com/c/Walmart/Job/(USA)-Principal,-PM/-in-Union-City,NJ?jid=xyz) | 🔲 New | — | 2026-04-30 |',
+    expected: 'https://www.ziprecruiter.com/c/Walmart/Job/(USA)-Principal,-PM/-in-Union-City,NJ?jid=xyz',
+  },
+  {
+    name: 'ZipRecruiter URL with (Florida or Chicago preferred) parens',
+    line: '| 3.7 |  | Mabbly | Head of Product | Director+ | AI/ML | [View](https://www.ziprecruiter.com/c/Mabbly/Job/Head-of-Product-Remote-(Florida-or-Chicago-preferred)/-in-Fort-Lauderdale,FL?jid=def) | 🔲 New | — | 2026-04-30 |',
+    expected: 'https://www.ziprecruiter.com/c/Mabbly/Job/Head-of-Product-Remote-(Florida-or-Chicago-preferred)/-in-Fort-Lauderdale,FL?jid=def',
+  },
+  {
+    name: 'Plain URL with no parens (regression)',
+    line: '| 4.4 |  | Schneider | Director | Director+ | AI/ML | [View](https://www.whatjobs.com/jobs/director-ai-marketing-ops?id=2640575527) | 🔲 New | — | 2026-04-30 |',
+    expected: 'https://www.whatjobs.com/jobs/director-ai-marketing-ops?id=2640575527',
+  },
+  {
+    name: 'Greenhouse URL with query string (regression)',
+    line: '| 3.7 |  | Klaviyo | Director MO | Director+ | MarTech | [View](https://www.klaviyo.com/careers/jobs?gh_jid=7700798003) | 🔲 New | — | 2026-04-30 |',
+    expected: 'https://www.klaviyo.com/careers/jobs?gh_jid=7700798003',
+  },
+  {
+    name: 'LinkedIn URL with hyphenated path (regression)',
+    line: '| 3.7 | 1.5 | A1 | Head of Product, AI | Director+ | AI/ML | [View](https://www.linkedin.com/jobs/view/head-of-product-ai-at-a1-4405720578) | 🔲 New | 🟢 Live | 2026-04-30 03:07 |',
+    expected: 'https://www.linkedin.com/jobs/view/head-of-product-ai-at-a1-4405720578',
+  },
+];
+
+for (const t of urlTests) {
+  const m = t.line.match(URL_REGEX);
+  const got = m ? m[1] : null;
+  if (got === t.expected) {
+    pass(t.name);
+  } else {
+    fail(`${t.name}: got "${got}", expected "${t.expected}"`);
+  }
+}
+
+// ── 4. LIVENESS CLASSIFICATION ──────────────────────────────────
+
+console.log('\n4. Liveness classification');
 
 try {
   const { classifyLiveness } = await import(pathToFileURL(join(ROOT, 'liveness-core.mjs')).href);

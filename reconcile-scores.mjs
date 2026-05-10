@@ -89,7 +89,10 @@ const changes = [];
 
 // Process each line — find table rows with [View](URL) and inject/update Adj. column
 const updatedLines = lines.map(line => {
-  const urlMatch = line.match(/\[View\]\(([^)]+)\)/);
+  // Match [View](URL) requiring `)` followed by table cell delimiter `|`,
+  // so URLs containing literal parens (ZipRecruiter `(USA)`,
+  // `(Business-Cards-&-Payments)`, etc.) aren't truncated at the first inner `)`.
+  const urlMatch = line.match(/\[View\]\((.*?)\)\s*\|/);
   if (!urlMatch || !line.startsWith('|')) return line;
 
   const url = urlMatch[1].trim();
