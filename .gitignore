@@ -29,6 +29,8 @@ modes/_profile.md
 # Scraper caches and logs
 scrapers/data/
 *.log
+*.bak
+.liveness_cache.json
 
 # Secrets and API keys
 *.key

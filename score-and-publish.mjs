@@ -13,12 +13,13 @@
 // Table columns: Score | Adj. | Company | Role | Level | Domain | Link | Status | Added
 //
 // Usage:
-//   node score-and-publish.mjs            # Incremental (default)
-//   node score-and-publish.mjs --full     # Re-score everything from pipeline + all digests
-//   node score-and-publish.mjs --reconcile # Also reconcile evaluation scores from reports/
+//   node score-and-publish.mjs              # Incremental + reconcile (default)
+//   node score-and-publish.mjs --full       # Re-score everything from pipeline + all digests
+//   node score-and-publish.mjs --no-reconcile # Skip evaluation score reconciliation
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
 
 const ROOT = import.meta.dirname;
 const OBSIDIAN_FILE = join(
@@ -30,7 +31,9 @@ const NOW = new Date();
 const TODAY = NOW.toISOString().slice(0, 10);
 const TIMESTAMP = NOW.toISOString().slice(0, 16).replace('T', ' ');
 const FULL_MODE = process.argv.includes('--full');
-const RECONCILE_MODE = process.argv.includes('--reconcile');
+const RECONCILE_MODE = !process.argv.includes('--no-reconcile');
+const SKIP_LIVENESS = process.argv.includes('--skip-liveness');
+const VERBOSE_LIVENESS = process.argv.includes('--verbose-liveness');
 
 // ── Statuses that mean "user took action — don't re-score or remove" ──
 const LOCKED_STATUSES = ['✅ Applied', '❌ Closed', '⏸️ Paused', '🚫 Rejected', '🎯 Interview', '🤝 Offer'];
@@ -202,7 +205,16 @@ function parseObsidianTable() {
     const adjLike = cols[1] === '' || cols[1] === '—' || cols[1].match(/^[\d.]+(?:\/5)?$/);
     const hasAdj = adjLike && cols.length >= 7;
 
-    if (hasAdj && cols.length >= 9) {
+    if (hasAdj && cols.length >= 10) {
+      // Full + Liveness: Score | Adj. | Company | Role | Level | Domain | Link | Status | Liveness | Added
+      adj = cols[1] || '';
+      company = cols[2] || '';
+      role = cols[3] || '';
+      level = cols[4] || '';
+      domain = cols[5] || '';
+      status = cols[7] || '🔲 New';
+      added = cols[9] || '';
+    } else if (hasAdj && cols.length === 9) {
       // Full new format: Score | Adj. | Company | Role | Level | Domain | Link | Status | Added
       adj = cols[1] || '';
       company = cols[2] || '';
@@ -212,16 +224,31 @@ function parseObsidianTable() {
       status = cols[7] || '🔲 New';
       added = cols[8] || '';
     } else if (hasAdj && cols.length === 8) {
-      // Collapsed new format (no Status): Score | Adj. | Company | Role | Level | Domain | Link | Added
-      adj = cols[1] || '';
-      company = cols[2] || '';
-      role = cols[3] || '';
-      level = cols[4] || '';
-      domain = cols[5] || '';
-      if (cols[7].match(/^\d{4}-\d{2}-\d{2}/)) {
-        added = cols[7];
+      // Two possible 8-col shapes, disambiguated by Link column position:
+      //   A) Actioned + Liveness: Score | Adj. | Company | Role | Status | Link | Liveness | Added
+      //   B) Collapsed new:       Score | Adj. | Company | Role | Level | Domain | Link | Added
+      const linkIdx = cols.findIndex((c) => c.includes('[View]'));
+      if (linkIdx === 5) {
+        // Shape A
+        adj = cols[1] || '';
+        company = cols[2] || '';
+        role = cols[3] || '';
+        level = '';
+        domain = '';
+        status = cols[4] || '';
+        added = cols[7] || '';
       } else {
-        status = cols[7];
+        // Shape B
+        adj = cols[1] || '';
+        company = cols[2] || '';
+        role = cols[3] || '';
+        level = cols[4] || '';
+        domain = cols[5] || '';
+        if (cols[7].match(/^\d{4}-\d{2}-\d{2}/)) {
+          added = cols[7];
+        } else {
+          status = cols[7];
+        }
       }
     } else if (hasAdj && cols.length === 7) {
       // Actioned new format: Score | Adj. | Company | Role | Status | Link | Added
@@ -433,6 +460,40 @@ for (const [url, role] of candidateRoles) {
   newCount++;
 }
 
+// ── Liveness check: APPLY/REVIEW open rows only ──
+// Run post-scoring, pre-sort so stale rows flip to Closed and settle into the
+// Actioned section naturally. See feature spec: we burn time on dead listings
+// otherwise (6 of 8 top roles were dead on 2026-04-14).
+let livenessStats = null;
+if (!SKIP_LIVENESS) {
+  const toCheck = finalRows.filter(
+    (r) => !r._locked && (r.recommendation === '🟢 APPLY' || r.recommendation === '🟡 REVIEW') && r.url
+  );
+  if (toCheck.length > 0) {
+    console.log(`\nChecking liveness for ${toCheck.length} APPLY/REVIEW role(s)...`);
+    const { results, stats } = await checkLiveness(
+      toCheck.map((r) => r.url),
+      { verbose: VERBOSE_LIVENESS }
+    );
+    livenessStats = { ...stats, staleFlipped: 0 };
+
+    for (const row of toCheck) {
+      const entry = results.get(row.url);
+      if (!entry) continue;
+      row.liveness = entry;
+      if (entry.result === 'stale') {
+        // Auto-close: preserve original "added" date but annotate with reason
+        const originalAdded = (row.added || '').split(' (stale:')[0].trim();
+        row.added = `${originalAdded} (stale: ${entry.reason})`;
+        row.status = '❌ Closed';
+        row.recommendation = '❌ Closed';
+        row._locked = true;
+        livenessStats.staleFlipped++;
+      }
+    }
+  }
+}
+
 // Sort: locked rows stay grouped at top by status, then open rows by effective score desc
 // Effective score = Adj. when present, otherwise surface Score
 finalRows.sort((a, b) => {
@@ -479,10 +540,10 @@ md += `- ⚪ **SKIP** (<2.0): Too junior or hard mismatch\n\n`;
 
 function writeTable(rows, includeStatus = true) {
   if (includeStatus) {
-    md += `| Score | Adj. | Company | Role | Level | Domain | Link | Status | Added |\n`;
-    md += `|-------|------|---------|------|-------|--------|------|--------|-------|\n`;
+    md += `| Score | Adj. | Company | Role | Level | Domain | Link | Status | Liveness | Added |\n`;
+    md += `|-------|------|---------|------|-------|--------|------|--------|----------|-------|\n`;
     for (const r of rows) {
-      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.status} | ${r.added} |\n`;
+      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.status} | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
     }
   } else {
     md += `| Score | Adj. | Company | Role | Level | Domain | Link | Added |\n`;
@@ -520,10 +581,10 @@ if (skipRows.length > 0) {
 if (lockedRows.length > 0) {
   md += `## 📌 Actioned (${lockedRows.length})\n\n`;
   md += `> These roles have a user-set status and are not re-scored.\n\n`;
-  md += `| Score | Adj. | Company | Role | Status | Link | Added |\n`;
-  md += `|-------|------|---------|------|--------|------|-------|\n`;
+  md += `| Score | Adj. | Company | Role | Status | Link | Liveness | Added |\n`;
+  md += `|-------|------|---------|------|--------|------|----------|-------|\n`;
   for (const r of lockedRows) {
-    md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.status} | [View](${r.url}) | ${r.added} |\n`;
+    md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.status} | [View](${r.url}) | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
   }
   md += '\n';
 }
@@ -546,4 +607,9 @@ console.log(`🟡 REVIEW:      ${reviewRows.length}`);
 console.log(`🟠 WEAK:        ${weakRows.length}`);
 console.log(`⚪ SKIP:        ${skipRows.length}`);
 console.log(`📌 Actioned:    ${lockedRows.length}`);
+if (livenessStats) {
+  console.log(`\nLiveness:       ${livenessStats.checked} checked, ${livenessStats.cacheHits} cached, ${livenessStats.staleFlipped} flipped → ❌ Closed`);
+} else if (SKIP_LIVENESS) {
+  console.log(`\nLiveness:       skipped (--skip-liveness)`);
+}
 console.log(`\nPublished to: ${OBSIDIAN_FILE}`);
