@@ -167,10 +167,124 @@ try {
   fail(`Liveness classification tests crashed: ${e.message}`);
 }
 
+// ── 5. LIVENESS HTTP CHECKER ───────────────────────────────
+
+console.log('\n5. Liveness HTTP checker');
+
+try {
+  const { _internals, formatLivenessCell } = await import(
+    pathToFileURL(join(ROOT, 'liveness-http.mjs')).href
+  );
+  const { isGenericCareersRedirect, extractPostingAgeDays } = _internals;
+
+  // ---- isGenericCareersRedirect ----
+
+  if (isGenericCareersRedirect(
+    'https://acme.com/jobs/12345',
+    'https://acme.com/careers'
+  ) === true) {
+    pass('Detects redirect from job ID to /careers root');
+  } else {
+    fail('Should detect redirect from job ID to /careers root');
+  }
+
+  if (isGenericCareersRedirect(
+    'https://boards.greenhouse.io/acme/jobs/12345',
+    'https://boards.greenhouse.io/acme/jobs'
+  ) === true) {
+    pass('Detects Greenhouse redirect from /jobs/ID to /jobs');
+  } else {
+    fail('Should detect Greenhouse redirect from /jobs/ID to /jobs');
+  }
+
+  if (isGenericCareersRedirect(
+    'https://acme.com/jobs/12345',
+    'https://acme.com/jobs/12345'
+  ) === false) {
+    pass('Same URL is not a redirect');
+  } else {
+    fail('Same URL should not be flagged as redirect');
+  }
+
+  if (isGenericCareersRedirect(
+    'https://acme.com/jobs/12345',
+    'https://acme.com/jobs/67890'
+  ) === false) {
+    pass('Different job ID is not a generic careers redirect');
+  } else {
+    fail('Different job ID should not be flagged as generic redirect');
+  }
+
+  // ---- extractPostingAgeDays ----
+
+  if (extractPostingAgeDays('Posted 14 days ago') === 14) {
+    pass('Parses "Posted N days ago" pattern');
+  } else {
+    fail('Should parse "Posted N days ago" pattern');
+  }
+
+  // datePosted JSON-LD: 30 days ago in ISO format. Allow ±1 day for time-zone
+  // jitter at boundaries.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+  const datePostedDays = extractPostingAgeDays(`"datePosted": "${thirtyDaysAgo}"`);
+  if (datePostedDays === 30 || datePostedDays === 29 || datePostedDays === 31) {
+    pass('Parses JSON-LD datePosted field');
+  } else {
+    fail(`Should parse JSON-LD datePosted; got ${datePostedDays}`);
+  }
+
+  if (extractPostingAgeDays('No date here at all') === null) {
+    pass('Returns null when no date pattern present');
+  } else {
+    fail('Should return null when no date pattern present');
+  }
+
+  if (extractPostingAgeDays('') === null) {
+    pass('Returns null on empty body');
+  } else {
+    fail('Should return null on empty body');
+  }
+
+  // ---- formatLivenessCell ----
+
+  if (formatLivenessCell(null) === '—') {
+    pass('Empty entry formats as em-dash (preserves column count)');
+  } else {
+    fail('Empty entry should format as em-dash');
+  }
+
+  if (formatLivenessCell({ result: 'live', ageDays: 5 }) === '🟢 Live') {
+    pass('Live + recent posting formats as plain Live');
+  } else {
+    fail('Live + recent posting should format as plain Live');
+  }
+
+  if (formatLivenessCell({ result: 'live', ageDays: 60 }).includes('60d')) {
+    pass('Live + old posting (>=45 days) shows age warning');
+  } else {
+    fail('Live + old posting should show age warning');
+  }
+
+  if (formatLivenessCell({ result: 'stale', ageDays: 60 }) === '💀 Stale') {
+    pass('Stale entry never shows age warning (already stale)');
+  } else {
+    fail('Stale entry should not show age warning');
+  }
+
+  if (formatLivenessCell({ result: 'unknown', ageDays: null }) === '❓ Unknown') {
+    pass('Unknown entry formats correctly');
+  } else {
+    fail('Unknown entry should format as Unknown');
+  }
+} catch (e) {
+  fail(`Liveness HTTP tests crashed: ${e.message}`);
+}
+
 // ── 4. DASHBOARD BUILD ──────────────────────────────────────────
 
 if (!QUICK) {
-  console.log('\n4. Dashboard build');
+  console.log('\n6. Dashboard build');
   const goBuild = run('cd dashboard && go build -o /tmp/career-dashboard-test . 2>&1');
   if (goBuild !== null) {
     pass('Dashboard compiles');
@@ -178,12 +292,12 @@ if (!QUICK) {
     fail('Dashboard build failed');
   }
 } else {
-  console.log('\n4. Dashboard build (skipped --quick)');
+  console.log('\n6. Dashboard build (skipped --quick)');
 }
 
 // ── 5. DATA CONTRACT ────────────────────────────────────────────
 
-console.log('\n5. Data contract validation');
+console.log('\n7. Data contract validation');
 
 // Check system files exist
 const systemFiles = [
@@ -219,7 +333,7 @@ for (const f of userFiles) {
 
 // ── 6. PERSONAL DATA LEAK CHECK ─────────────────────────────────
 
-console.log('\n6. Personal data leak check');
+console.log('\n8. Personal data leak check');
 
 const leakPatterns = [
   'Santiago', 'santifer.io', 'Santifer iRepair', 'Zinkee', 'ALMAS',
@@ -252,7 +366,7 @@ if (!leakFound) {
 
 // ── 7. ABSOLUTE PATH CHECK ──────────────────────────────────────
 
-console.log('\n7. Absolute path check');
+console.log('\n9. Absolute path check');
 
 const absPathResult = run(
   `grep -rn "/Users/" --include="*.mjs" --include="*.sh" --include="*.md" --include="*.go" --include="*.yml" . 2>/dev/null | grep -v node_modules | grep -v ".git/" | grep -v README.md | grep -v LICENSE | grep -v go.sum | grep -v CLAUDE.md | grep -v test-all.mjs`
@@ -267,7 +381,7 @@ if (!absPathResult) {
 
 // ── 8. MODE FILE INTEGRITY ──────────────────────────────────────
 
-console.log('\n8. Mode file integrity');
+console.log('\n10. Mode file integrity');
 
 const expectedModes = [
   '_shared.md', '_profile.template.md', 'oferta.md', 'pdf.md', 'scan.md',
@@ -293,7 +407,7 @@ if (shared.includes('_profile.md')) {
 
 // ── 9. CLAUDE.md INTEGRITY ──────────────────────────────────────
 
-console.log('\n9. CLAUDE.md integrity');
+console.log('\n11. CLAUDE.md integrity');
 
 const claude = readFile('CLAUDE.md');
 const requiredSections = [
@@ -312,7 +426,7 @@ for (const section of requiredSections) {
 
 // ── 10. VERSION FILE ─────────────────────────────────────────────
 
-console.log('\n10. Version file');
+console.log('\n12. Version file');
 
 if (fileExists('VERSION')) {
   const version = readFile('VERSION').trim();
