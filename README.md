@@ -100,6 +100,8 @@ Originally built by Santiago ([santifer/career-ops](https://github.com/santifer/
 
 ## Quick Start
 
+> **New to terminals / Node / git?** See [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md) for a slow walkthrough.
+
 ```bash
 # 1. Clone and install
 git clone https://github.com/joegarvey-ai/job-finder-ai.git
