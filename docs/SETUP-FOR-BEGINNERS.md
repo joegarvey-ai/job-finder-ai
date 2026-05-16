@@ -6,6 +6,25 @@ If you're already comfortable with the terminal, see [SETUP.md](SETUP.md) instea
 
 ---
 
+## TL;DR — the fastest path
+
+If you can install two apps and copy-paste a prompt, you don't need to read the rest of this guide.
+
+1. Install **Node.js 18+** from [nodejs.org](https://nodejs.org) (download the "LTS" version, run the installer with default settings).
+2. Install **Claude Code** from [docs.claude.com/claude-code](https://docs.claude.com/claude-code).
+3. Open Claude Code (search "Claude Code" in your launcher, or run `claude` in any terminal).
+4. Paste this — replace the bracketed bits:
+
+   > Clone `https://github.com/joegarvey-ai/job-finder-ai` into `~/Projects/`. After cloning, run `bash bootstrap.sh` to install dependencies. Then read `AGENTS.md` and walk me through the First Run onboarding. I'm a **[your field, e.g., "financial analyst"]** targeting **[your roles, e.g., "Senior FP&A and Strategic Finance positions"]**. My background: **[paste your resume text or LinkedIn summary, or describe your career in 2-3 paragraphs]**.
+
+5. Answer Claude Code's follow-up questions (target companies, comp range, location policy). It will fill in your `cv.md`, profile, archetypes, and target-company list for your field — not the AI/PM defaults this repo ships with.
+
+Total time: ~10 minutes including the conversational steps. **You never have to edit code or YAML by hand.**
+
+If anything goes wrong, the slow walkthrough below (Parts 1-8) covers every detail.
+
+---
+
 ## What you're about to install
 
 You're going to install a tool that **uses AI to find and evaluate jobs for you**. Specifically:
@@ -118,37 +137,30 @@ You should see a path ending in `job-finder-ai`.
 
 ## Part 3 — Install the project's dependencies
 
-This downloads the helper libraries the project uses. From inside `job-finder-ai`:
+Run the bootstrap script. It installs everything, seeds the config files from templates, runs a health check, and tells you what to do next.
 
+**macOS / Linux:**
 ```bash
-npm install
+bash bootstrap.sh
 ```
 
-This takes 1–3 minutes. You'll see scrolling text — that's normal. When it stops and you get your prompt back, the install is done.
-
-Now install the browser the PDF generator uses:
-
-```bash
-npx playwright install chromium
+**Windows (PowerShell):**
+```powershell
+.\bootstrap.ps1
 ```
 
-This is another 1–2 minute download.
+The script takes 2-5 minutes total. It's safe to re-run if it fails partway. When it finishes you'll see "Bootstrap complete" with next-step instructions.
 
 ---
 
-## Part 4 — Run the health check
+## Part 4 — Health check (already done — bootstrap ran it for you)
 
-This script verifies every prerequisite is in place:
+The bootstrap script ran `npm run doctor` at the end. You should have seen a list of checks with green `✓` marks. Yellow `!` warnings for "cv.md not customized" are expected — Claude Code will fix that for you in the next step. As long as there are no red `✗` blockers, you're ready.
 
+If you ever want to re-run the health check manually:
 ```bash
 npm run doctor
 ```
-
-You should see a list of checks with green `✓` marks. If anything is red `✗`, read the message — it will tell you exactly what to do.
-
-**Expected output the first time:**
-
-You will probably see warnings (yellow `!`) for things like "cv.md not customized" — that's expected, you haven't filled it in yet. As long as there are no red `✗` blockers, you're ready for the next step.
 
 ---
 
@@ -160,18 +172,24 @@ This is where the magic starts. From inside `job-finder-ai`, run:
 claude
 ```
 
+**macOS tip:** instead of typing `claude`, you can double-click `start-career-ops.command` in Finder. It opens a terminal in this folder and runs `claude` for you. Right-click → Open the first time (Gatekeeper flags unsigned scripts) — after that, regular double-click works.
+
+**Windows tip:** double-click `start-career-ops.bat` in File Explorer.
+
 If this is your first time using Claude Code, it will open a browser window to log in. Sign in with your Anthropic account (the same one you use for claude.ai). You may need a paid plan to use Claude Code regularly — see [Anthropic's pricing](https://www.anthropic.com/pricing).
 
 Once logged in, you'll be in Claude Code. **The first thing to type is:**
 
-> Read CLAUDE.md and the README. I'm new — help me set up career-ops for myself.
+> I'm new to career-ops. Read AGENTS.md and walk me through First Run onboarding. I'm a **[your field, e.g., "marketing operations manager"]** targeting **[your roles, e.g., "Director of MarTech and Marketing Ops Lead positions"]**. Here's my background: **[paste your resume text or LinkedIn summary]**.
 
 Claude Code will do the rest:
 
-1. Ask you to paste your resume (or your LinkedIn URL, or just describe your background)
-2. Ask for your target roles, location, comp expectations
-3. Fill in your `cv.md`, `config/profile.yml`, `modes/_profile.md`, and `portals.yml`
-4. Confirm everything is set up
+1. Confirm your field (so it picks the right archetypes, not the default AI/PM ones)
+2. Fill in your `cv.md` from your pasted background
+3. Fill in `config/profile.yml` with your details
+4. Fill in `modes/_profile.md` with 3-6 archetypes appropriate for your field — replacing the AI/PM examples
+5. Customize `portals.yml` with title filters, keywords, and target companies for your field
+6. Confirm everything is set up
 
 You're now ready to evaluate a job. **Paste any job URL or job description** into the chat and Claude Code will:
 

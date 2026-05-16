@@ -98,86 +98,70 @@ Originally built by Santiago ([santifer/career-ops](https://github.com/santifer/
 | **Human-in-the-Loop** | AI evaluates and recommends, you decide and act. The system never submits an application -- you always have the final call |
 | **Pipeline Integrity** | Automated merge, dedup, status normalization, health checks |
 
-## Quick Start
+## Setup
 
-> **New to terminals / Node / git?** See [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md) for a slow walkthrough.
+You don't need to know how to use a terminal. Two paths:
+
+### Path A — Zero-touch (recommended for everyone)
+
+**Prerequisites (one-time):** Install [Node.js 18+](https://nodejs.org) and [Claude Code](https://docs.claude.com/claude-code). That's it. The rest is done in Claude Code itself.
+
+Open Claude Code (run `claude` in any folder — or double-click [`start-career-ops.command`](start-career-ops.command) on macOS / [`start-career-ops.bat`](start-career-ops.bat) on Windows after cloning) and paste this — **edit the bracketed bits for your situation**:
+
+> Clone `https://github.com/joegarvey-ai/job-finder-ai` into a sensible folder (e.g., `~/Projects/`). After it clones, run `bash bootstrap.sh` to install dependencies and seed config files. Then read `AGENTS.md` and walk me through the First Run onboarding. I'm a **[your field — e.g., "financial analyst", "marketing manager", "backend engineer", "product designer", "healthcare administrator"]** targeting **[your target roles — e.g., "Senior FP&A roles", "Demand Gen Lead positions", "Staff backend engineer roles"]**. Pull my resume and target companies from this background: [paste your resume text, LinkedIn summary, or a few paragraphs about your career].
+
+Claude Code will:
+1. Clone the repo
+2. Run `bootstrap.sh` (Node check, `npm install`, Playwright install, seed templates, run doctor)
+3. Read AGENTS.md
+4. Fill in `cv.md`, `config/profile.yml`, `modes/_profile.md`, and `portals.yml` for **your field** — not the original author's AI/PM defaults
+5. Ask you a few clarifying questions (comp range, location policy, deal-breakers)
+6. Optionally set up a recurring scan via `/schedule`
+
+Total time: ~5-10 minutes including the conversational steps.
+
+### Path B — Manual setup (if you prefer the terminal)
+
+If you'd rather drive the terminal yourself:
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/joegarvey-ai/job-finder-ai.git
-cd job-finder-ai && npm install
-npx playwright install chromium   # Required for PDF generation and scrapers
-
-# 2. Check setup
-npm run doctor                     # Validates all prerequisites
-
-# 3. Set up your profile
-cp config/profile.example.yml config/profile.yml  # Edit with your details
-cp cv.example.md cv.md                            # Replace placeholders with your CV
-cp modes/_profile.example.md modes/_profile.md    # Customize your archetypes
-cp templates/portals.example.yml portals.yml      # Customize target companies
-
-# 4. (Optional) Set up JSearch API for LinkedIn/Indeed/Glassdoor scanning
-#    Sign up for free: https://rapidapi.com/letscrape-6bfed1765432/api/jsearch
-#    Add your key to config/profile.yml:
-#      api_keys:
-#        jsearch: YOUR_KEY_HERE
-
-# 5. Personalize with Claude
-claude   # Open Claude Code in this directory
-
-# Then ask Claude to adapt the system to you:
-# "Change the archetypes to backend engineering roles"
-# "Add these 5 companies to portals.yml"
-# "Update my profile with this CV I'm pasting"
-
-# 6. Start using
-# Paste a job URL or run /career-ops
+git clone https://github.com/joegarvey-ai/job-finder-ai.git ~/Projects/job-finder-ai
+cd ~/Projects/job-finder-ai
+bash bootstrap.sh        # or: .\bootstrap.ps1 on Windows
+claude                   # then say: "set me up using AGENTS.md, I'm a [field]"
 ```
 
-> **The system is designed to be customized by Claude itself.** Modes, archetypes, scoring weights, negotiation scripts -- just ask Claude to change them. It reads the same files it uses, so it knows exactly what to edit.
+The detailed slow walkthrough for non-technical users is in [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md).
+
+### Customization is conversational
+
+After setup, every customization is a sentence to Claude. Examples:
+
+- "Add Goldman Sachs, JPMorgan, and Morgan Stanley to my portals.yml"
+- "Change my comp floor to $180K total"
+- "I don't want to evaluate any roles requiring travel"
+- "Rewrite my archetypes for senior FP&A leadership instead of mid-level"
+
+Claude reads the same files it uses, so it can edit them directly.
 
 ### Custom scrapers (this fork)
 
+The deterministic Node.js scrapers run without LLM cost. They hit Greenhouse/Lever/JSearch/Wellfound APIs directly:
+
 ```bash
-# Run all 6 scrapers (Greenhouse, Lever, JSearch, Wellfound, Indeed, remote boards)
-npm run scan-all
-
-# Run a single scraper
+npm run scan-all                  # All 6 scrapers
 npm run scan:greenhouse           # 55+ Greenhouse boards via API
-npm run scan:jsearch              # LinkedIn + Indeed + Glassdoor via JSearch
+npm run scan:jsearch              # LinkedIn + Indeed + Glassdoor (needs JSEARCH_API_KEY in .env)
 npm run scan:wellfound            # Wellfound via route interception
-
-# Discover new ATS boards (run monthly)
-npm run discover-slugs
-
-# Dry run (preview without writing)
-node scan-all.mjs --dry-run
 ```
+
+JSearch API key: copy `.env.example` to `.env` and add `JSEARCH_API_KEY=...` ([free key from RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)).
 
 ### Obsidian sync (optional)
 
-To auto-sync your pipeline and reports to an Obsidian vault:
+If you use Obsidian and want a scored, ranked, auto-updating job table inside your vault: copy `.env.example` to `.env` and set `OBSIDIAN_VAULT_PATH=/path/to/your/vault`. Then `node score-and-publish.mjs` will write a scored table into your vault. If you don't use Obsidian, you can ignore this — career-ops works fine without it.
 
-1. Edit `scan-and-sync.sh` and `report-sync.sh` — update the `OBSIDIAN_FILE` and `OBSIDIAN_EVALS` paths to point to your vault
-2. Run manually: `bash scan-and-sync.sh && bash report-sync.sh`
-3. To automate on macOS, create a launchd plist (see `FORK_NOTES.md` for the pattern) pointing to your scripts and install with:
-   ```bash
-   cp your-plist.plist ~/Library/LaunchAgents/
-   launchctl load ~/Library/LaunchAgents/your-plist.plist
-   ```
-
-> **Note:** The default sync paths assume macOS with iCloud. Edit `scan-and-sync.sh` to point `OBSIDIAN_FILE` to your actual vault path on any OS.
-
-See [docs/SETUP.md](docs/SETUP.md) for the full setup guide.
-
-## No-Code / AI-Directed Setup
-
-If you'd rather have an AI agent set this up for you, clone the repo and then open it in Claude Code, Kiro, or any agentic coding tool and say:
-
-> "Read AGENTS.md and README.md. Then read cv.example.md and config/profile.example.yml. Create cv.md and config/profile.yml for me based on the following background: [paste your resume or career summary here]. Walk me through any steps that need my input."
-
-The agent will handle file setup, ask you for your JSearch API key, and run a test scan. No terminal experience required beyond the initial clone and `npm install`.
+For automation (scan every N days), see Part 7 of [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md).
 
 ## Gemini CLI Integration
 
