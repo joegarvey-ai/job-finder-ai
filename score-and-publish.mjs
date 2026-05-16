@@ -19,6 +19,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import yaml from 'js-yaml';
 import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
 
 // Optional dotenv (so OBSIDIAN_VAULT_PATH can live in .env)
@@ -68,24 +69,57 @@ const LOCKED_STATUSES = ['✅ Applied', '❌ Closed', '⏸️ Paused', '🚫 Rej
 // Statuses that mean "still open — re-score is OK"
 const OPEN_STATUSES = ['🔲 New', '👀 Reviewing'];
 
-// ── Company tiers from profile.yml ──
-const TIER_1 = ['anthropic', 'snowflake', 'databricks', 'dbt labs', 'stripe'];
-const TIER_2 = ['notion', 'figma', 'braze', 'iterable', 'segment', 'twilio', 'hubspot',
-  'amplitude', 'mixpanel', 'glean', 'retool'];
-const TIER_3 = ['adobe', 'salesforce', 'medallia', 'qualtrics', 'scale ai', 'weights & biases',
-  'weights and biases', 'langfuse'];
-const STRONG_COMPANIES = ['datadog', 'asana', 'postman', 'klaviyo', 'fivetran', 'pagerduty',
-  'launchdarkly', 'newrelic', 'new relic', 'dropbox', 'reddit', 'confluent', 'clickup',
-  'gitlab', 'digitalocean', 'okta', 'lattice', 'domino data lab', 'instacart', 'affirm',
-  'mercury', 'descript', 'bloomreach', 'attentive', 'socure', 'geico', 'workday', 'autodesk',
-  'pagerduty', 'merck', 'axon'];
+// ── Company tiers ────────────────────────────────────────────────────────
+//
+// Load from config/profile.yml under `scoring.company_tiers`. If that section
+// is absent, fall back to the AI/data/devtools-flavored defaults below (which
+// reflect the original author's PM-in-AI search). Friend forks: add a
+// scoring.company_tiers section to your profile.yml — see profile.example.yml.
+//
+// Substring match (case-insensitive) against company name, so "weights &
+// biases" catches "Weights & Biases AI" too.
+
+const DEFAULT_COMPANY_TIERS = {
+  tier_1: ['anthropic', 'snowflake', 'databricks', 'dbt labs', 'stripe'],
+  tier_2: ['notion', 'figma', 'braze', 'iterable', 'segment', 'twilio', 'hubspot',
+    'amplitude', 'mixpanel', 'glean', 'retool'],
+  tier_3: ['adobe', 'salesforce', 'medallia', 'qualtrics', 'scale ai', 'weights & biases',
+    'weights and biases', 'langfuse'],
+  strong: ['datadog', 'asana', 'postman', 'klaviyo', 'fivetran', 'pagerduty',
+    'launchdarkly', 'newrelic', 'new relic', 'dropbox', 'reddit', 'confluent', 'clickup',
+    'gitlab', 'digitalocean', 'okta', 'lattice', 'domino data lab', 'instacart', 'affirm',
+    'mercury', 'descript', 'bloomreach', 'attentive', 'socure', 'geico', 'workday', 'autodesk',
+    'merck', 'axon'],
+};
+
+function loadCompanyTiers() {
+  const profilePath = join(ROOT, 'config', 'profile.yml');
+  if (!existsSync(profilePath)) return DEFAULT_COMPANY_TIERS;
+  try {
+    const profile = yaml.load(readFileSync(profilePath, 'utf8')) || {};
+    const ct = profile.scoring?.company_tiers;
+    if (!ct) return DEFAULT_COMPANY_TIERS;
+    const lower = (arr) => Array.isArray(arr) ? arr.map(s => String(s).toLowerCase()) : [];
+    return {
+      tier_1: lower(ct.tier_1).length ? lower(ct.tier_1) : DEFAULT_COMPANY_TIERS.tier_1,
+      tier_2: lower(ct.tier_2).length ? lower(ct.tier_2) : DEFAULT_COMPANY_TIERS.tier_2,
+      tier_3: lower(ct.tier_3).length ? lower(ct.tier_3) : DEFAULT_COMPANY_TIERS.tier_3,
+      strong: lower(ct.strong).length ? lower(ct.strong) : DEFAULT_COMPANY_TIERS.strong,
+    };
+  } catch (err) {
+    console.warn(`Warning: could not parse scoring.company_tiers from profile.yml (${err.message}). Using defaults.`);
+    return DEFAULT_COMPANY_TIERS;
+  }
+}
+
+const COMPANY_TIERS = loadCompanyTiers();
 
 function getCompanyTier(company) {
   const c = company.toLowerCase();
-  if (TIER_1.some(t => c.includes(t))) return { tier: 1, label: '🏆 T1' };
-  if (TIER_2.some(t => c.includes(t))) return { tier: 2, label: '⭐ T2' };
-  if (TIER_3.some(t => c.includes(t))) return { tier: 3, label: '🔷 T3' };
-  if (STRONG_COMPANIES.some(t => c.includes(t))) return { tier: 2.5, label: '💼' };
+  if (COMPANY_TIERS.tier_1.some(t => c.includes(t))) return { tier: 1, label: '🏆 T1' };
+  if (COMPANY_TIERS.tier_2.some(t => c.includes(t))) return { tier: 2, label: '⭐ T2' };
+  if (COMPANY_TIERS.tier_3.some(t => c.includes(t))) return { tier: 3, label: '🔷 T3' };
+  if (COMPANY_TIERS.strong.some(t => c.includes(t))) return { tier: 2.5, label: '💼' };
   return { tier: 4, label: '' };
 }
 

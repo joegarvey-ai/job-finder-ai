@@ -72,3 +72,26 @@ cv:
   # Find it in your Canva design URL: https://www.canva.com/design/DAxxxxxxx/...
   # The ID starts with "D" and is 11 characters long.
   # canva_resume_design_id: "DAxxxxxxxxx"
+
+# ── Scoring config (Obsidian publisher only) ──────────────────────────────
+# Used by score-and-publish.mjs (the optional Obsidian dashboard publisher).
+# If you don't use Obsidian sync, you can ignore this block entirely.
+#
+# Company tiers drive the 🏆 T1 / ⭐ T2 / 🔷 T3 / 💼 strong labels in the
+# Obsidian scanner table. Substrings are matched case-insensitively against
+# the company name, so "stripe" catches "Stripe Inc."
+#
+# If you omit this block, defaults reflect the original author's PM/AI/data
+# search — replace with your own target companies if you publish to Obsidian.
+#
+# scoring:
+#   company_tiers:
+#     tier_1:
+#       - "your top-choice company"
+#       - "another dream company"
+#     tier_2:
+#       - "strong second-tier"
+#     tier_3:
+#       - "decent fallback"
+#     strong:
+#       - "respectable employer"
