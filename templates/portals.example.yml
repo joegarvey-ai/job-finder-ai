@@ -53,79 +53,67 @@
 #     - "Brazil"
 #     - "Australia"
 
+# ============================================================================
+# CUSTOMIZE THIS FILE FOR YOUR FIELD
+# ============================================================================
+# The example values throughout this file are AI/ML/PM-flavored because they
+# come from the original author's job search. If you are in a DIFFERENT FIELD
+# (finance, marketing, design, sales, ops, healthcare admin, legal, etc.),
+# you MUST replace the `title_filter`, `search_queries`, and `tracked_companies`
+# sections with values for YOUR field — otherwise the scanner will return zero
+# relevant results.
+#
+# Easiest path: in Claude Code, after this file is copied to `portals.yml`,
+# say "rewrite portals.yml for my field — I'm a [YOUR FIELD]". The agent
+# will replace the keywords and queries based on your `cv.md` and
+# `modes/_profile.md`. You don't have to edit YAML by hand.
+# ============================================================================
+
 # -- Title filter --
 # The scanner uses these keywords to decide if a title is relevant.
 # At least 1 positive must match AND 0 negatives must match (case-insensitive).
 
 title_filter:
   positive:
-    # [CUSTOMIZE] Add keywords matching YOUR target roles
-    # -- AI/ML roles --
+    # [REPLACE] Keywords matching titles YOU would actually consider.
+    # Below is the original-author example (AI/PM). Replace wholesale for your field.
+    #
+    # Examples by field:
+    #   Finance: "Financial Analyst", "FP&A", "Corporate Development", "Treasury",
+    #            "Strategic Finance", "Investment Analyst"
+    #   Marketing: "Demand Gen", "Lifecycle Marketing", "Brand Manager", "Growth Marketing",
+    #              "Marketing Operations", "Content Strategist"
+    #   Design: "Product Designer", "Design Systems", "UX Researcher", "Design Lead"
+    #   Sales: "Account Executive", "Sales Engineer", "Solutions Consultant",
+    #          "Customer Success Manager"
+    #   Ops: "Business Operations", "Strategy & Operations", "Chief of Staff",
+    #        "Program Manager", "Revenue Operations"
+    #   Healthcare admin: "Practice Manager", "Clinical Operations", "Revenue Cycle",
+    #                     "Medical Office Manager", "Patient Experience"
+    #   Engineering: "Backend Engineer", "Platform Engineer", "SRE", "Staff Engineer",
+    #                "Tech Lead", "Engineering Manager"
+    #
+    # --- ORIGINAL EXAMPLE (AI/PM — replace with your field's keywords): ---
     - "AI"
     - "ML"
     - "LLM"
-    - "Agent"
-    - "Agentic"
-    - "GenAI"
-    - "Generative AI"
-    - "NLP"
-    - "LLMOps"
-    - "MLOps"
-    - "Voice AI"
-    - "Conversational AI"
-    - "Speech"
-    # -- German AI/ML keywords (DACH market) --
-    - "KI"
-    - "Künstliche Intelligenz"
-    - "KI Engineer"
-    - "KI Trainer"
-    - "Dozent"
-    - "Weiterbildung"
-    # -- Engineering roles --
-    - "Platform Engineer"
-    - "Solutions Architect"
-    - "Solutions Engineer"
-    - "Forward Deployed"
-    - "Deployed Engineer"
-    - "Customer Engineer"
-    - "Integration Engineer"
-    # -- Product roles --
     - "Product Manager"
-    - "Technical PM"
-    # -- Automation roles --
+    - "Solutions Architect"
+    - "Forward Deployed"
     - "Automation"
-    - "Hyperautomation"
-    - "Low-Code"
-    - "No-Code"
-    - "GTM Engineer"
     - "RevOps"
-    - "Business Systems"
-    - "Internal Tools"
-    - "Transformation"
   negative:
-    # [CUSTOMIZE] Add keywords for roles you want to exclude
+    # [REPLACE] Keywords for roles to EXCLUDE. Catches false positives.
+    # Examples: roles that share a keyword with your target but aren't relevant.
+    #   Junior/Intern levels if you want senior roles
+    #   Technologies/stacks you don't work with
+    #   Industries you're avoiding
     - "Junior"
     - "Intern"
-    - ".NET"
-    - "Java "
-    - "iOS"
-    - "Android"
-    - "PHP"
-    - "Ruby"
-    - "Embedded"
-    - "Firmware"
-    - "FPGA"
-    - "ASIC"
-    - "Blockchain"
-    - "Web3"
-    - "Crypto"
-    - "Salesforce Admin"
-    - "SAP "
-    - "Oracle EBS"
-    - "Mainframe"
-    - "COBOL"
   seniority_boost:
-    # These prefixes add relevance but are not required
+    # These prefixes BOOST relevance (don't require a match — just add weight).
+    # Adjust for your level — IC seniors look for Senior/Staff/Principal/Lead,
+    # managers look for Manager/Director/Head/VP, etc.
     - "Senior"
     - "Staff"
     - "Principal"
@@ -136,208 +124,85 @@ title_filter:
 # -- Search queries --
 # Each query triggers a WebSearch. Use site: to filter by portal.
 # The scanner extracts title, URL, and company from results.
+#
+# [REPLACE] These queries are AI/PM-flavored examples from the original
+# author's search. For your field, replace the keywords in each query
+# (keep the site: filters — those are portal-specific, not field-specific).
+#
+# Easiest path: in Claude Code, after copying this file to portals.yml,
+# say "rewrite the search_queries in portals.yml for my field — I'm a
+# [YOUR FIELD]". The agent will rewrite the keywords for you.
 
 search_queries:
-  # -- Ashby --
-  - name: Ashby — AI PM
-    query: 'site:jobs.ashbyhq.com "AI Product Manager" OR "Senior Product Manager AI" remote'
+  # -- Greenhouse / Ashby / Lever (the three biggest ATS platforms) --
+  # The site: filter targets the ATS. The quoted keywords are your role types.
+  # Replace the quoted keywords with titles you'd actually accept.
+
+  - name: Greenhouse — primary roles
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "[YOUR TITLE 1]" OR "[YOUR TITLE 2]" remote'
     enabled: true
 
-  - name: Ashby — Solutions Architect
-    query: 'site:jobs.ashbyhq.com "Solutions Architect" AI OR automation remote'
+  - name: Ashby — primary roles
+    query: 'site:jobs.ashbyhq.com "[YOUR TITLE 1]" OR "[YOUR TITLE 2]" remote'
     enabled: true
 
-  - name: Ashby — AI Engineer
-    query: 'site:jobs.ashbyhq.com "AI Engineer" OR "LLM Engineer" OR "Forward Deployed" remote'
+  - name: Lever — primary roles
+    query: 'site:jobs.lever.co "[YOUR TITLE 1]" OR "[YOUR TITLE 2]" remote'
     enabled: true
 
-  - name: Ashby — Agentic
-    query: 'site:jobs.ashbyhq.com "Agentic" OR "AI Agent" OR "Automation Architect" remote'
+  # -- Cross-portal aggregators (good for remote-friendly roles) --
+
+  - name: RemoteOK — primary roles
+    query: 'site:remoteok.com "[YOUR TITLE 1]" OR "[YOUR TITLE 2]"'
     enabled: true
 
-  # -- Greenhouse --
-  - name: Greenhouse — AI PM
-    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "AI Product Manager" OR "Senior Product Manager" AI remote'
+  - name: Himalayas — primary roles
+    query: 'site:himalayas.app "[YOUR TITLE 1]" OR "[YOUR TITLE 2]"'
     enabled: true
 
-  - name: Greenhouse — SA & FDE
-    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "Solutions Architect" OR "Forward Deployed" AI remote'
+  - name: WeWorkRemotely — primary roles
+    query: 'site:weworkremotely.com "[YOUR TITLE 1]" OR "[YOUR TITLE 2]"'
     enabled: true
 
-  - name: Greenhouse — AI Engineer
-    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "AI Engineer" OR "LLM" OR "Agentic" remote'
-    enabled: true
+  # -- LinkedIn / Indeed (broad coverage, lots of duplicates with above) --
+  # Use sparingly; results can be stale. Disable if dupe noise is high.
 
-  # -- Workable --
-  - name: Workable — AI Roles
-    query: 'site:apply.workable.com "AI" "Product Manager" OR "Solutions Architect" OR "AI Engineer" remote'
-    enabled: true
-
-  # -- No-Code / Low-Code / Automation --
-  - name: Ashby — No-Code & Automation
-    query: 'site:jobs.ashbyhq.com "no-code" OR "low-code" OR "automation engineer" OR "n8n" OR "Make" OR "Airtable" remote senior'
-    enabled: true
-
-  - name: Greenhouse — No-Code & Automation
-    query: 'site:job-boards.greenhouse.io "no-code" OR "low-code" OR "automation engineer" OR "business systems" senior remote'
-    enabled: true
-
-  - name: GTM Engineer — All portals
-    query: '"GTM Engineer" OR "RevOps Engineer" OR "Growth Engineer" automation Airtable OR Make OR Clay remote'
-    enabled: true
-
-  # -- Voice AI & Conversational AI --
-  - name: Voice AI — FDE & SA
-    query: 'site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com "Voice AI" OR "Conversational AI" OR "Speech" "Solutions" OR "Forward Deployed" OR "Customer Engineer"'
-    enabled: true
-
-  - name: Voice AI — AI Engineer
-    query: 'site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com "Voice" OR "Speech" "AI Engineer" OR "Deployment" OR "Integration"'
-    enabled: true
-
-  # -- Contact Center AI --
-  - name: Contact Center AI — SA & SE
-    query: '"contact center" OR "customer service" "AI" "Solutions Architect" OR "Solutions Engineer" OR "Forward Deployed" remote'
-    enabled: true
-
-  # -- FDE specific (cross-portal) --
-  - name: FDE & Deployed Engineer — All portals
-    query: '"Forward Deployed Engineer" OR "Deployed Engineer" OR "Deployment Engineer" AI site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com OR site:jobs.lever.co'
-    enabled: true
-
-  # -- Remote-friendly Europe boards --
-
-  - name: Remotive — AI/DevRel/SA/FDE
-    query: 'site:remotive.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "DevRel" Europe'
-    enabled: true
-
-  - name: WeWorkRemotely — AI & DX
-    query: 'site:weworkremotely.com "AI" OR "DevRel" OR "Solutions Engineer" OR "Forward Deployed" OR "Founding Engineer"'
-    enabled: true
-
-  - name: Working Nomads — AI/DevRel/SA
-    query: 'site:workingnomads.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed"'
-    enabled: true
-
-  - name: EU Remote Jobs — AI/DevRel/SA
-    query: 'site:euremotejobs.com "AI" OR "DevRel" OR "Solutions Architect" OR "Forward Deployed" OR "Founding Engineer"'
-    enabled: true
-
-  - name: RemoteOK — AI/DevRel/SA
-    query: 'site:remoteok.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "Founding Engineer"'
-    enabled: true
-
-  # -- Specialized AI / Dev-Tools / FDE boards --
-
-  - name: ai-jobs.net — DevRel/SA/FDE
-    query: 'site:ai-jobs.net "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "DevRel" remote Europe'
-    enabled: true
-
-  - name: ai-jobs.net — Founding/Applied AI
-    query: 'site:ai-jobs.net "Founding Engineer" OR "Applied AI Engineer" OR "Founding" remote'
-    enabled: true
-
-  - name: fwddeploy.com — Forward Deployed roles
-    query: 'site:fwddeploy.com "Forward Deployed" OR "Deployed Engineer" remote Europe OR EMEA'
-    enabled: true
-
-  - name: YC Jobs — DevRel/SA/FDE/Founding
-    query: 'site:ycombinator.com/jobs OR site:workatastartup.com "Forward Deployed" OR "Developer Advocate" OR "Founding Engineer" OR "Solutions Architect" remote'
-    enabled: true
-
-  - name: YC Jobs — Applied AI
-    query: 'site:workatastartup.com "Applied AI" OR "AI Engineer" OR "AI Agent" remote Europe'
-    enabled: true
-
-  # -- Spanish market specialized (high-value for Madrid/Barcelona-based candidates) --
-
-  - name: Manfred — Tech Senior España
-    query: 'site:getmanfred.com/en/job-offers "Solutions Architect" OR "DevRel" OR "Forward Deployed" OR "AI Engineer" OR "Founding"'
-    enabled: true
-
-  - name: Manfred — Remote AI/Senior
-    query: 'site:getmanfred.com "remote" "AI" OR "Senior" OR "Staff" OR "Lead"'
-    enabled: true
-
-  - name: Tecnoempleo — España IT
-    query: 'site:tecnoempleo.com "AI Engineer" OR "Solutions Architect" OR "DevRel" OR "Forward Deployed" OR "Founding Engineer"'
-    enabled: true
-
-  - name: Tecnoempleo — Remoto Senior
-    query: 'site:tecnoempleo.com "remoto" OR "remote" Senior "AI" OR "Architect" OR "Lead"'
-    enabled: true
-
-  - name: JobFluent — Spain startups
-    query: 'site:jobfluent.com Madrid OR Barcelona "AI" OR "Engineer" OR "Solutions" OR "DevRel"'
-    enabled: true
-
-  - name: Welcome to the Jungle — Spain tech
-    query: 'site:welcometothejungle.com Spain OR Madrid OR Barcelona "AI Engineer" OR "Solutions Architect" OR "DevRel" OR "Forward Deployed"'
-    enabled: true
-
-  # -- DevRel-specific boards --
-
-  - name: DevRelX Jobs
-    query: 'site:devrelx.com/jobs remote OR Europe OR EMEA'
-    enabled: true
-
-  - name: TrueUp — DevRel roles
-    query: 'site:trueup.io/devrel OR site:trueup.io "Developer Advocate" OR "DevRel" remote Europe'
-    enabled: true
-
-  - name: Remote Rocketship — DevRel
-    query: 'site:remoterocketship.com/jobs/developer-relations OR site:remoterocketship.com "DevRel" remote'
-    enabled: true
-
-  - name: DevRel Job board
-    query: 'site:devreljob.com remote OR Europe OR EMEA'
-    enabled: true
-
-  # -- European / global aggregators --
-
-  - name: Himalayas — Remote AI/Dev-tools
-    query: 'site:himalayas.app "AI Engineer" OR "Solutions Architect" OR "Developer Advocate" OR "Forward Deployed" OR "Founding Engineer" Europe'
-    enabled: true
-
-  - name: Jooble — España Tech Senior
-    query: 'site:jooble.org "AI Engineer" OR "Solutions Architect" OR "DevRel" Madrid OR remote España'
-    enabled: true
-
-  - name: EU Data Jobs — AI/ML Europe
-    query: 'site:eudatajobs.com "AI" OR "ML" OR "Data" "Engineer" OR "Architect" remote Europe'
-    enabled: true
-
-  - name: HN Who's Hiring — Remote AI
-    query: 'site:news.ycombinator.com OR site:hnrss.org "AI Engineer" OR "Forward Deployed" OR "DevRel" OR "Founding Engineer" remote'
-    enabled: true
-
-  # -- Türkiye / Turkey job portals --
-  # WebSearch queries for Turkish job boards (no public ATS APIs).
-  # [CUSTOMIZE] Replace keywords with your target roles in Turkish.
-
-  - name: Kariyer.net — Backend / Software Engineer
-    query: 'site:kariyer.net "Backend Developer" OR "Software Engineer" OR "Yazılım Geliştirici" OR "Backend Geliştirici" Ankara OR Istanbul OR uzaktan'
+  - name: LinkedIn — primary roles
+    query: 'site:linkedin.com/jobs "[YOUR TITLE 1]" OR "[YOUR TITLE 2]" remote'
     enabled: false
 
-  - name: Kariyer.net — Frontend Engineer
-    query: 'site:kariyer.net "Frontend Developer" OR "React Developer" OR "Frontend Geliştirici" Ankara OR Istanbul OR uzaktan'
-    enabled: false
-
-  - name: Yenibiris.com — Software Engineer
-    query: 'site:yenibiris.com "Software Engineer" OR "Backend Developer" OR "Frontend Developer" OR "Yazılım Geliştirici"'
-    enabled: false
-
-  - name: Secretcv.com — Tech Roles
-    query: 'site:secretcv.com "Software Engineer" OR "Backend" OR "Frontend" OR "Full Stack"'
-    enabled: false
-
-  - name: İşin Olsun — Startup / Tech
-    query: 'site:isinolsun.com "Yazılım" OR "Software" OR "Backend" OR "Frontend" OR "Full Stack"'
-    enabled: false
-
-  - name: LinkedIn — Turkey Tech Roles
-    query: 'site:linkedin.com/jobs "Software Engineer" OR "Backend Engineer" OR "Frontend Engineer" Turkey OR Türkiye OR Ankara OR Istanbul'
-    enabled: false
+  # ───────────────────────────────────────────────────────────────────────
+  # Example: field-specific query sets — copy any block, paste above,
+  # uncomment, and edit. Delete the rest.
+  # ───────────────────────────────────────────────────────────────────────
+  #
+  # FINANCE (FP&A / Corporate Development / Strategic Finance)
+  # - name: Greenhouse — finance
+  #   query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "FP&A" OR "Financial Analyst" OR "Corporate Development" OR "Strategic Finance" remote'
+  #   enabled: true
+  # - name: LinkedIn — finance senior
+  #   query: 'site:linkedin.com/jobs "Senior FP&A" OR "Finance Manager" OR "Director of Finance" remote'
+  #   enabled: true
+  #
+  # MARKETING (Demand Gen / Lifecycle / Brand)
+  # - name: Greenhouse — marketing
+  #   query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "Demand Generation" OR "Lifecycle Marketing" OR "Marketing Operations" OR "Brand Marketing" remote'
+  #   enabled: true
+  #
+  # DESIGN (Product / Systems / Research)
+  # - name: Ashby — design
+  #   query: 'site:jobs.ashbyhq.com "Product Designer" OR "Design Systems" OR "UX Researcher" OR "Design Lead" remote'
+  #   enabled: true
+  #
+  # SALES (AE / Sales Engineer / Customer Success)
+  # - name: Lever — sales
+  #   query: 'site:jobs.lever.co "Account Executive" OR "Sales Engineer" OR "Customer Success Manager" remote'
+  #   enabled: true
+  #
+  # OPERATIONS (BizOps / Strategy & Ops / Chief of Staff)
+  # - name: Greenhouse — ops
+  #   query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "Business Operations" OR "Strategy and Operations" OR "Chief of Staff" OR "Revenue Operations" remote'
+  #   enabled: true
 
 # -- Tracked companies --
 # Companies whose career pages are checked directly.
@@ -357,6 +222,24 @@ search_queries:
 #     transport: http    — reserved for future transports. Defaults to http.
 
 tracked_companies:
+  # ──────────────────────────────────────────────────────────────────────────
+  # [REPLACE] The companies below are the original author's targets in AI,
+  # data platforms, and devtools. For YOUR field, this list is probably wrong.
+  #
+  # The scanner only finds roles at companies in this list (or matched via
+  # search_queries above). If you're a financial analyst, you want banks,
+  # asset managers, fintechs, and corporate finance teams here — not LLM
+  # startups. A non-AI user who leaves this list as-is will get very few
+  # relevant hits.
+  #
+  # Easiest path: in Claude Code, after copying this file to portals.yml,
+  # say "rewrite tracked_companies in portals.yml for my field — I'm a
+  # [YOUR FIELD] targeting companies like [examples]". The agent will
+  # replace this list with 30-60 companies appropriate to your field.
+  #
+  # You can also delete most of the list below and just add your 10-20
+  # top targets — the scanner works fine with a smaller list.
+  # ──────────────────────────────────────────────────────────────────────────
 
   # -- AI Labs & LLM providers --
 

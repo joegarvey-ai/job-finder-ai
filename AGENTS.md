@@ -87,6 +87,8 @@ If `modes/_profile.md` is missing, copy from `modes/_profile.template.md` silent
 
 **If ANY of these is missing, enter onboarding mode.** Do NOT proceed with evaluations, scans, or any other mode until the basics are in place. Guide the user step by step:
 
+**CRITICAL — DETECT THE USER'S FIELD FIRST.** The example/template files in this repo are AI/ML/PM-flavored because that was the original author's job search. If your user is in a different field (finance, marketing, design, sales, ops, healthcare admin, legal, education, etc.), you MUST REPLACE the field-specific content in `_profile.md` and `portals.yml` with content appropriate to their actual field. Do NOT leave AI archetypes in place for a finance user, AI title filters for a marketing user, or AI companies in a healthcare user's tracked_companies list.
+
 #### Step 1: CV (required)
 If `cv.md` is missing, ask:
 > "I don't have your CV yet. You can either:
@@ -98,23 +100,53 @@ If `cv.md` is missing, ask:
 
 Create `cv.md` from whatever they provide. Make it clean markdown with standard sections (Summary, Experience, Projects, Education, Skills).
 
+**Once `cv.md` exists, infer the user's professional field** from it (finance / marketing / design / engineering / product / sales / ops / healthcare admin / legal / education / etc.). Confirm with the user in one line:
+> "Looks like you're targeting [FIELD] roles — does that match?"
+
+This `[FIELD]` value drives Steps 2 and 3 below.
+
 #### Step 2: Profile (required)
 If `config/profile.yml` is missing, copy from `config/profile.example.yml` and then ask:
 > "I need a few details to personalize the system:
 > - Your full name and email
 > - Your location and timezone
-> - What roles are you targeting? (e.g., 'Senior Backend Engineer', 'AI Product Manager')
+> - What roles are you targeting? (e.g., 'Senior Backend Engineer', 'AI Product Manager', 'Senior FP&A Manager', 'Demand Gen Lead')
 > - Your salary target range
 >
 > I'll set everything up for you."
 
 Fill in `config/profile.yml` with their answers. For archetypes and targeting narrative, store the user-specific mapping in `modes/_profile.md` or `config/profile.yml` rather than editing `modes/_shared.md`.
 
+**Now fill in `modes/_profile.md` for the user's actual field:**
+
+1. Open `modes/_profile.md` (was copied from `_profile.template.md`).
+2. Locate the **Your Target Roles** table. The template has structural placeholders `[ARCHETYPE 1]`, `[ARCHETYPE 2]`, etc.
+3. **REPLACE these placeholders with 3-6 archetypes that fit the user's actual field.** Examples:
+   - Finance user → "FP&A Manager", "Corporate Development Analyst", "Strategic Finance Lead", "Treasury Manager"
+   - Marketing user → "Demand Gen Manager", "Lifecycle Marketer", "Brand Strategist", "Marketing Ops Lead"
+   - Design user → "Product Designer", "Design Systems Lead", "UX Researcher", "Design Lead"
+   - Sales user → "Enterprise Account Executive", "Sales Engineer", "Solutions Consultant"
+   - Ops user → "Business Operations Manager", "Chief of Staff", "Strategy & Ops Lead"
+   - Healthcare admin → "Practice Manager", "Clinical Operations Lead", "Revenue Cycle Manager"
+   - Engineering user → "Backend Platform Engineer", "Staff Engineer", "Tech Lead", "Engineering Manager"
+4. Fill in the **Adaptive Framing** table — for each archetype, what should they LEAD with from their CV?
+5. Fill in **Your Exit Narrative**, **Cross-cutting Advantage**, **Comp Targets**, and **Location Policy** from the user's answers.
+6. **DELETE the Appendix examples at the bottom** of `_profile.md` once the sections above are filled in. They were just patterns to mimic.
+
+Pull values from `cv.md` and the user's answers, not from your training-data assumptions about their field.
+
 #### Step 3: Portals (recommended)
 If `portals.yml` is missing:
-> "I'll set up the job scanner with 45+ pre-configured companies. Want me to customize the search keywords for your target roles?"
+> "I'll set up the job scanner. The default companies and keywords are AI/PM-flavored, so I'm going to rewrite them for your field."
 
-Copy `templates/portals.example.yml` → `portals.yml`. If they gave target roles in Step 2, update `title_filter.positive` to match.
+Copy `templates/portals.example.yml` → `portals.yml`. Then **rewrite three sections for the user's field**:
+
+1. **`title_filter.positive`** — replace the example AI keywords with 5-15 keywords matching titles the user would actually accept. Pull from their stated target roles in Step 2.
+2. **`title_filter.negative`** — add 3-8 keywords that catch false positives in their field (e.g., a senior FP&A user might exclude "Junior", "Intern", "Accountant", "Bookkeeper"; a Product Designer might exclude "Graphic Designer", "Marketing Designer", "Junior").
+3. **`search_queries`** — the template has placeholder queries with `[YOUR TITLE 1]` etc. Replace those with the user's actual target titles. Keep the `site:` filters (ATS-specific, not field-specific).
+4. **`tracked_companies`** — the default list is AI/data/devtools companies. For a non-AI user, **prune aggressively**: delete companies that don't post relevant roles for the user's field, and add 10-30 companies the user mentioned or that are well-known employers in their field. (For a finance user: large banks, asset managers, fintechs, F500 corporate finance teams. For a healthcare admin: hospital systems, MSOs, payer organizations.)
+
+If you don't know companies in the user's field offhand, ASK them: "Which 5-10 companies are your top targets? I'll seed the scanner with those and we can add more later."
 
 #### Step 4: Tracker
 If `data/applications.md` doesn't exist, create it:

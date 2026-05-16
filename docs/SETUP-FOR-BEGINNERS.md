@@ -245,8 +245,8 @@ Now set it to run on a schedule.
 ```bash
 # Edit your crontab and add a line for every-3-days at 9am:
 crontab -e
-# Then paste this (replace the path):
-# 0 9 */3 * *  /Users/yourname/Projects/job-finder-ai/scan-and-sync.sh
+# Then paste this (replace $HOME/Projects with your actual clone path):
+# 0 9 */3 * *  $HOME/Projects/job-finder-ai/scan-and-sync.sh
 ```
 
 **Linux (cron):** same `crontab -e` command and same line.
