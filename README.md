@@ -45,58 +45,7 @@
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/Join_the_community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a></p>
 
-## New in This Fork
-
-> Forked from [santifer/career-ops](https://github.com/santifer/career-ops). See [FORK_NOTES.md](FORK_NOTES.md) for full details.
-
-| Addition | What it does |
-|----------|-------------|
-| **JSearch API integration** | Aggregates LinkedIn + Indeed + Glassdoor in one call (free tier: 200 req/month) |
-| **Greenhouse/Lever aggregators** | Scans 100+ ATS boards via public APIs — no browser, no LLM cost |
-| **Wellfound route interception** | Captures internal API responses instead of scraping DOM — survives redesigns |
-| **Indeed RSS/HTML fallback** | Structured feed parser (Indeed WAF blocks it; JSearch covers the gap) |
-| **We Work Remotely scraper** | Updated selectors for WWR's 2026 redesign with company name extraction |
-| **Remotive API scraper** | JSON API for remote-focused PM roles |
-| **Dynamic slug discovery** | `discover-ats-slugs.mjs` auto-finds new Greenhouse/Lever boards monthly |
-| **Title-level scoring** | `score-and-publish.mjs` scores all scraped roles against your profile and publishes to Obsidian |
-| **Obsidian sync scripts** | Auto-sync pipeline and evaluation reports to an Obsidian vault via iCloud |
-| **launchd scheduler** | macOS plist to run scans every N days automatically |
-| **English evaluation mode** | `modes/oferta.md` translated to English with customizable archetype detection |
-
----
-
-## What Is This
-
-Career-Ops turns any AI coding CLI into a full job search command center. Instead of manually tracking applications in a spreadsheet, you get an AI-powered pipeline that:
-
-- **Evaluates offers** with a structured A-F scoring system (10 weighted dimensions)
-- **Generates tailored PDFs** -- ATS-optimized CVs customized per job description
-- **Scans portals** automatically (Greenhouse, Ashby, Lever, company pages)
-- **Processes in batch** -- evaluate 10+ offers in parallel with sub-agents
-- **Tracks everything** in a single source of truth with integrity checks
-
-> **Important: This is NOT a spray-and-pray tool.** Career-ops is a filter -- it helps you find the few offers worth your time out of hundreds. The system strongly recommends against applying to anything scoring below 4.0/5. Your time is valuable, and so is the recruiter's. Always review before submitting.
-
-Career-ops is agentic: Claude Code navigates career pages with Playwright, evaluates fit by reasoning about your CV vs the job description (not keyword matching), and adapts your resume per listing.
-
-> **Heads up: the first evaluations won't be great.** The system doesn't know you yet. Feed it context -- your CV, your career story, your proof points, your preferences, what you're good at, what you want to avoid. The more you nurture it, the better it gets. Think of it as onboarding a new recruiter: the first week they need to learn about you, then they become invaluable.
-
-Originally built by Santiago ([santifer/career-ops](https://github.com/santifer/career-ops)). This fork extends the scraping infrastructure, adds Obsidian sync, and adapts the evaluation system for US-based PM and leadership roles.
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **Auto-Pipeline** | Paste a URL, get a full evaluation + PDF + tracker entry |
-| **6-Block Evaluation** | Role summary, CV match, level strategy, comp research, personalization, interview prep (STAR+R) |
-| **Interview Story Bank** | Accumulates STAR+Reflection stories across evaluations -- 5-10 master stories that answer any behavioral question |
-| **Negotiation Scripts** | Salary negotiation frameworks, geographic discount pushback, competing offer leverage |
-| **ATS PDF Generation** | Keyword-injected CVs with Space Grotesk + DM Sans design |
-| **Portal Scanner** | 45+ companies pre-configured (Anthropic, OpenAI, ElevenLabs, Retool, n8n...) + custom queries across Ashby, Greenhouse, Lever, Wellfound |
-| **Batch Processing** | Parallel evaluation with `claude -p` workers |
-| **Dashboard TUI** | Terminal UI to browse, filter, and sort your pipeline |
-| **Human-in-the-Loop** | AI evaluates and recommends, you decide and act. The system never submits an application -- you always have the final call |
-| **Pipeline Integrity** | Automated merge, dedup, status normalization, health checks |
+> **Naming note:** This repo is `job-finder-ai` (this fork). The tool inside is named `career-ops` — that's the original upstream tool ([santifer/career-ops](https://github.com/santifer/career-ops), MIT) that this fork extends. When you see `/career-ops` slash commands or references to "career-ops" in code and docs, they refer to this project. Same thing, two names.
 
 ## Setup
 
@@ -120,6 +69,8 @@ Claude Code will:
 
 Total time: ~5-10 minutes including the conversational steps.
 
+> **Brand new to this stuff?** See [INSTALL.md](INSTALL.md) for a 3-step quickstart, or [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md) for the slow walkthrough with screenshots-worth of detail.
+
 ### Path B — Manual setup (if you prefer the terminal)
 
 If you'd rather drive the terminal yourself:
@@ -131,8 +82,6 @@ bash bootstrap.sh        # or: .\bootstrap.ps1 on Windows
 claude                   # then say: "set me up using AGENTS.md, I'm a [field]"
 ```
 
-The detailed slow walkthrough for non-technical users is in [docs/SETUP-FOR-BEGINNERS.md](docs/SETUP-FOR-BEGINNERS.md).
-
 ### Customization is conversational
 
 After setup, every customization is a sentence to Claude. Examples:
@@ -143,6 +92,64 @@ After setup, every customization is a sentence to Claude. Examples:
 - "Rewrite my archetypes for senior FP&A leadership instead of mid-level"
 
 Claude reads the same files it uses, so it can edit them directly.
+
+---
+
+## New in This Fork
+
+> Forked from [santifer/career-ops](https://github.com/santifer/career-ops). See [FORK_NOTES.md](FORK_NOTES.md) for full details.
+
+| Addition | What it does |
+|----------|-------------|
+| **Zero-touch setup** | `bootstrap.sh` / `bootstrap.ps1` + `start-career-ops.command/.bat` desktop launchers. Setup is "paste a prompt into Claude Code" with no manual file edits |
+| **Field-agnostic templates** | `_profile.template.md` and `portals.example.yml` work for any career (finance, marketing, design, sales, ops, healthcare, engineering) instead of assuming AI/PM |
+| **JSearch API integration** | Aggregates LinkedIn + Indeed + Glassdoor in one call (free tier: 200 req/month) |
+| **Greenhouse/Lever aggregators** | Scans 100+ ATS boards via public APIs — no browser, no LLM cost |
+| **Wellfound route interception** | Captures internal API responses instead of scraping DOM — survives redesigns |
+| **Indeed RSS/HTML fallback** | Structured feed parser (Indeed WAF blocks it; JSearch covers the gap) |
+| **We Work Remotely scraper** | Updated selectors for WWR's 2026 redesign with company name extraction |
+| **Remotive API scraper** | JSON API for remote-focused roles |
+| **Dynamic slug discovery** | `discover-ats-slugs.mjs` auto-finds new Greenhouse/Lever boards monthly |
+| **Title-level scoring** | `score-and-publish.mjs` scores all scraped roles against your profile and publishes to Obsidian (opt-in) |
+| **Obsidian sync (optional)** | Auto-sync pipeline and evaluation reports to an Obsidian vault — set `OBSIDIAN_VAULT_PATH` in `.env` |
+| **SSRF defense** | Liveness checker rejects private/loopback/metadata-service hosts before fetching |
+| **Eval harness** | `evals/` golden-set regression tests for the LLM evaluator (uses free Gemini tier) |
+| **English evaluation mode** | `modes/oferta.md` translated to English with customizable archetype detection |
+
+---
+
+## What Is This
+
+Career-ops turns any AI coding CLI into a full job search command center. Instead of manually tracking applications in a spreadsheet, you get an AI-powered pipeline that:
+
+- **Evaluates offers** with a structured A-G scoring system (weighted dimensions + posting-legitimacy check)
+- **Generates tailored PDFs** -- ATS-optimized CVs customized per job description
+- **Scans portals** automatically (Greenhouse, Ashby, Lever, company pages)
+- **Processes in batch** -- evaluate 10+ offers in parallel with sub-agents
+- **Tracks everything** in a single source of truth with integrity checks
+
+> **Important: This is NOT a spray-and-pray tool.** Career-ops is a filter -- it helps you find the few offers worth your time out of hundreds. The system strongly recommends against applying to anything scoring below 4.0/5. Your time is valuable, and so is the recruiter's. Always review before submitting.
+
+Career-ops is agentic: Claude Code navigates career pages with Playwright, evaluates fit by reasoning about your CV vs the job description (not keyword matching), and adapts your resume per listing.
+
+> **Heads up: the first evaluations won't be great.** The system doesn't know you yet. Feed it context -- your CV, your career story, your proof points, your preferences, what you're good at, what you want to avoid. The more you nurture it, the better it gets. Think of it as onboarding a new recruiter: the first week they need to learn about you, then they become invaluable.
+
+Originally built by Santiago ([santifer/career-ops](https://github.com/santifer/career-ops)). This fork extends the scraping infrastructure, makes setup zero-touch for non-technical users, and broadens the field-targeting beyond the original AI/PM defaults.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-Pipeline** | Paste a URL, get a full evaluation + PDF + tracker entry |
+| **A-G Evaluation** | Role summary, CV match, level strategy, comp research, personalization, interview prep (STAR+R), posting legitimacy |
+| **Interview Story Bank** | Accumulates STAR+Reflection stories across evaluations -- 5-10 master stories that answer any behavioral question |
+| **Negotiation Scripts** | Salary negotiation frameworks, geographic discount pushback, competing offer leverage |
+| **ATS PDF Generation** | Keyword-injected CVs with Space Grotesk + DM Sans design |
+| **Portal Scanner** | Pre-configured companies + custom queries across Ashby, Greenhouse, Lever, Wellfound |
+| **Batch Processing** | Parallel evaluation with `claude -p` workers |
+| **Dashboard TUI** | Terminal UI to browse, filter, and sort your pipeline |
+| **Human-in-the-Loop** | AI evaluates and recommends, you decide and act. The system never submits an application -- you always have the final call |
+| **Pipeline Integrity** | Automated merge, dedup, status normalization, health checks |
 
 ### Custom scrapers (this fork)
 
