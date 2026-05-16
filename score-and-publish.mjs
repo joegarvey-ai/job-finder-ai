@@ -21,11 +21,39 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
 
+// Optional dotenv (so OBSIDIAN_VAULT_PATH can live in .env)
+try {
+  const { config } = await import('dotenv');
+  config();
+} catch {
+  // dotenv not installed — fall through to process.env directly
+}
+
 const ROOT = import.meta.dirname;
-const OBSIDIAN_FILE = join(
-  '/Users/josephgarvey/Library/Mobile Documents/iCloud~md~obsidian/Documents',
-  '02 Personal Projects/Career Collateral/Career_Ops_Scanner.md'
-);
+
+// OBSIDIAN_VAULT_PATH points to your Obsidian vault root.
+const OBSIDIAN_VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH;
+const SCANNER_RELATIVE_PATH = process.env.OBSIDIAN_SCANNER_RELATIVE_PATH
+  || '02 Personal Projects/Career Collateral/Career_Ops_Scanner.md';
+
+if (!OBSIDIAN_VAULT_PATH) {
+  console.error('score-and-publish.mjs requires OBSIDIAN_VAULT_PATH to be set.');
+  console.error('');
+  console.error('This script publishes scored job roles to an Obsidian vault. If you don\'t use');
+  console.error('Obsidian, you can skip it — career-ops works fine without it. The /career-ops scan');
+  console.error('command uses Claude Code directly and doesn\'t need this script.');
+  console.error('');
+  console.error('To enable: copy .env.example to .env and set OBSIDIAN_VAULT_PATH.');
+  process.exit(2);
+}
+
+const OBSIDIAN_FILE = join(OBSIDIAN_VAULT_PATH, SCANNER_RELATIVE_PATH);
+
+if (!existsSync(OBSIDIAN_VAULT_PATH)) {
+  console.error(`OBSIDIAN_VAULT_PATH does not exist: ${OBSIDIAN_VAULT_PATH}`);
+  console.error('Check that the path in .env points to your actual Obsidian vault.');
+  process.exit(2);
+}
 
 const NOW = new Date();
 const TODAY = NOW.toISOString().slice(0, 10);

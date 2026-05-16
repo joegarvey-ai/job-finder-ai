@@ -71,11 +71,54 @@ function saveCache(cache) {
   writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2));
 }
 
+// Defense-in-depth URL validation to prevent SSRF via malicious or corrupted
+// pipeline.md entries. Rejects non-http(s) schemes and private/loopback/
+// link-local/metadata-service hosts. Does not do DNS resolution, so a
+// public hostname pointing at a private IP via DNS would not be caught —
+// fetch's redirect:'follow' is still a vector, so we also re-check res.url.
+function isSafePublicUrl(input) {
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname.toLowerCase();
+  if (!host) return false;
+  // Reject literal localhost and common aliases
+  if (host === 'localhost' || host === 'localhost.localdomain' || host.endsWith('.localhost')) return false;
+  // IPv4 literal — block private/loopback/link-local/metadata
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [parseInt(ipv4[1], 10), parseInt(ipv4[2], 10)];
+    if (a === 0) return false;                              // 0.0.0.0/8
+    if (a === 10) return false;                             // 10.0.0.0/8
+    if (a === 127) return false;                            // 127.0.0.0/8
+    if (a === 169 && b === 254) return false;               // link-local + AWS metadata
+    if (a === 172 && b >= 16 && b <= 31) return false;      // 172.16.0.0/12
+    if (a === 192 && b === 168) return false;               // 192.168.0.0/16
+    if (a >= 224) return false;                             // multicast/reserved
+  }
+  // IPv6 literal — block loopback, link-local, ULA, unspecified
+  if (host.startsWith('[') || host.includes(':')) {
+    const stripped = host.replace(/^\[|\]$/g, '');
+    if (stripped === '::' || stripped === '::1') return false;
+    if (stripped.startsWith('fe80:') || stripped.startsWith('fe80::')) return false;
+    if (stripped.startsWith('fc') || stripped.startsWith('fd')) return false;
+    if (stripped.startsWith('ff')) return false; // multicast
+  }
+  return true;
+}
+
 async function fetchWithTimeout(url, timeoutMs) {
+  if (!isSafePublicUrl(url)) {
+    throw new Error(`unsafe url: ${url}`);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
@@ -84,6 +127,12 @@ async function fetchWithTimeout(url, timeoutMs) {
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
+    // Re-validate the post-redirect URL — a 302 to 169.254.169.254 would have
+    // been followed without this check.
+    if (response.url && !isSafePublicUrl(response.url)) {
+      throw new Error(`unsafe redirect: ${response.url}`);
+    }
+    return response;
   } finally {
     clearTimeout(timer);
   }

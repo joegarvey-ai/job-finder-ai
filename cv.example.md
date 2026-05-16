@@ -1,26 +1,39 @@
 # [YOUR NAME]
 
+<!--
+  This is a template. Replace every bracketed placeholder with your details.
+  It's structured for any role — product, engineering, design, data, marketing,
+  operations, etc. Adapt the section headings to fit.
+
+  Easiest path: open Claude Code in this folder and say
+  "set up cv.md from this background: [paste your resume or LinkedIn summary]"
+  and the agent will fill this template for you.
+-->
+
 **Location:** [City, State] — [Remote preferred / Open to X metro]  
 **Phone:** [YOUR PHONE]  
 **Email:** [YOUR EMAIL]  
 **LinkedIn:** [YOUR LINKEDIN URL]  
 **Portfolio:** [YOUR PORTFOLIO URL]  
-**GitHub:** [YOUR GITHUB URL]
+**GitHub:** [YOUR GITHUB URL — if relevant]
 
 ---
 
 ## Professional Summary
 
-[LEVEL] product leader with [N]+ years defining technical vision and roadmaps for [YOUR DOMAINS — e.g., AI/ML, enterprise data, marketing technology] products. Currently leading a [N]-person cross-functional team at [CURRENT COMPANY] managing [N] products — including [KEY PRODUCTS — e.g., an AI assistant, data platform, developer tools] — serving [AUDIENCE SIZE] and [N]+ internal business units.
+[YOUR ROLE — e.g., Senior Backend Engineer / Staff ML Engineer / Director of Product / Senior Designer] with [N]+ years of [YOUR FOCUS — e.g., building distributed systems / shipping AI products / running design systems / leading data teams]. Currently at [CURRENT COMPANY] [WHAT YOU DO — e.g., owning the inference platform / leading a 5-person team / running the analytics pipeline serving N customers].
 
 **What I bring:**
-- [KEY ACCOMPLISHMENT 1 — e.g., Shipped production AI products: RAG-based chatbot (X MAU), LLM feedback platform]
-- [KEY ACCOMPLISHMENT 2 — e.g., Built enterprise data infrastructure from scratch: unified N+ datasets]
-- [KEY ACCOMPLISHMENT 3 — e.g., Defined multi-year product strategy across N products on $XM budget]
-- [KEY ACCOMPLISHMENT 4 — e.g., Led N-person team across N time zones serving N business units]
+- [KEY ACCOMPLISHMENT 1 — concrete, with a number if possible]
+- [KEY ACCOMPLISHMENT 2 — concrete, with a number if possible]
+- [KEY ACCOMPLISHMENT 3 — concrete, with a number if possible]
+- [KEY ACCOMPLISHMENT 4 — concrete, with a number if possible]
 
 **What I'm not:**
-- [HONEST GAPS — e.g., Not a hands-on engineer. I define requirements and lead technical teams but don't write production code.]
+- [HONEST GAPS — what you don't claim. Examples:
+   "Not a hands-on engineer — I define requirements but don't write production code."
+   "Not a manager — I'm an IC and want to stay one."
+   "No experience with mobile — my work is server-side." ]
 
 ---
 

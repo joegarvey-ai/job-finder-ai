@@ -10,26 +10,64 @@
 // One API call = one query. We make 4 focused queries per scan = 4 requests.
 // At every-3-day scans, that's ~40 requests/month — well within free tier.
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { log } from './lib/common.mjs';
+
+// Optional dotenv — JSEARCH_API_KEY can live in .env
+try {
+  const { config } = await import('dotenv');
+  config();
+} catch {
+  // dotenv not installed — fall through
+}
 
 const SOURCE = 'jsearch';
 const ROOT = join(import.meta.dirname, '..');
 
 function getApiKey() {
-  const profile = readFileSync(join(ROOT, 'config', 'profile.yml'), 'utf8');
+  // Prefer env var (newer convention)
+  if (process.env.JSEARCH_API_KEY) return process.env.JSEARCH_API_KEY;
+  // Fall back to profile.yml api_keys.jsearch (legacy location)
+  const profilePath = join(ROOT, 'config', 'profile.yml');
+  if (!existsSync(profilePath)) return null;
+  const profile = readFileSync(profilePath, 'utf8');
   const match = profile.match(/jsearch:\s*["']?([a-zA-Z0-9]+)["']?/);
-  if (!match) return null;
-  return match[1];
+  return match ? match[1] : null;
 }
 
-const QUERIES = [
-  { query: 'Director of Product', remote: true },
-  { query: 'Head of Product', remote: true },
-  { query: 'Principal Product Manager', remote: true },
-  { query: 'Director Marketing Operations', remote: true },
-];
+// Read query strings from target_roles.primary in profile.yml, fall back to
+// generic defaults if not configured. Each query becomes one JSearch API call.
+function loadQueries() {
+  const profilePath = join(ROOT, 'config', 'profile.yml');
+  if (existsSync(profilePath)) {
+    try {
+      const profile = readFileSync(profilePath, 'utf8');
+      // Parse the target_roles.primary list — simple inline YAML list parsing
+      const block = profile.match(/^target_roles:[\s\S]*?(?=^\S|^$)/m);
+      if (block) {
+        const primary = block[0].match(/primary:\s*\n((?:\s*-\s*.+\n?)+)/);
+        if (primary) {
+          const roles = [...primary[1].matchAll(/^\s*-\s*["']?(.+?)["']?\s*$/gm)]
+            .map(m => m[1].trim())
+            .filter(Boolean);
+          if (roles.length) return roles.slice(0, 6).map(q => ({ query: q, remote: true }));
+        }
+      }
+    } catch {
+      // Fall through to defaults
+    }
+  }
+  // Generic defaults — broadly relevant
+  return [
+    { query: 'Senior Software Engineer', remote: true },
+    { query: 'Staff Engineer', remote: true },
+    { query: 'Senior Product Manager', remote: true },
+    { query: 'Director of Product', remote: true },
+  ];
+}
+
+const QUERIES = loadQueries();
 
 async function searchJobs(apiKey, query, remote) {
   const params = new URLSearchParams({

@@ -15,11 +15,36 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 
+// Optional dotenv
+try {
+  const { config } = await import('dotenv');
+  config();
+} catch {
+  // dotenv not installed — fall through to process.env directly
+}
+
 const ROOT = import.meta.dirname;
-const OBSIDIAN_FILE = join(
-  '/Users/josephgarvey/Library/Mobile Documents/iCloud~md~obsidian/Documents',
-  '02 Personal Projects/Career Collateral/Career_Ops_Scanner.md'
-);
+
+const OBSIDIAN_VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH;
+const SCANNER_RELATIVE_PATH = process.env.OBSIDIAN_SCANNER_RELATIVE_PATH
+  || '02 Personal Projects/Career Collateral/Career_Ops_Scanner.md';
+
+if (!OBSIDIAN_VAULT_PATH) {
+  console.error('reconcile-scores.mjs requires OBSIDIAN_VAULT_PATH to be set.');
+  console.error('');
+  console.error('This script writes evaluation scores back to an Obsidian scanner table.');
+  console.error('If you don\'t use Obsidian, you can skip it — career-ops doesn\'t need it.');
+  console.error('');
+  console.error('To enable: copy .env.example to .env and set OBSIDIAN_VAULT_PATH.');
+  process.exit(2);
+}
+
+const OBSIDIAN_FILE = join(OBSIDIAN_VAULT_PATH, SCANNER_RELATIVE_PATH);
+
+if (!existsSync(OBSIDIAN_VAULT_PATH)) {
+  console.error(`OBSIDIAN_VAULT_PATH does not exist: ${OBSIDIAN_VAULT_PATH}`);
+  process.exit(2);
+}
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const JSON_OUTPUT = process.argv.includes('--json');
