@@ -4,6 +4,11 @@ set -euo pipefail
 # career-ops batch runner — standalone orchestrator for claude -p workers
 # Reads batch-input.tsv, delegates each offer to a claude -p worker,
 # tracks state in batch-state.tsv for resumability.
+#
+# NOTE: This script is Claude Code-specific. It uses claude -p with
+# --dangerously-skip-permissions and --append-system-prompt-file flags
+# that are not available in other CLIs. Multi-CLI support is out of scope
+# for now — contributions welcome.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -27,6 +32,8 @@ DRY_RUN=false
 RETRY_FAILED=false
 START_FROM=0
 MAX_RETRIES=2
+MIN_SCORE=0
+MODEL=""  # empty = let claude -p use the Claude Max default
 
 usage() {
   cat <<'USAGE'
@@ -41,6 +48,10 @@ Options:
   --retry-failed       Only retry offers marked as "failed" in state
   --start-from N       Start from offer ID N (skip earlier IDs)
   --max-retries N      Max retry attempts per offer (default: 2)
+  --min-score N        Skip PDF/tracker for offers scoring below N (default: 0 = off)
+  --model NAME         Claude model passed to `claude -p --model` (default:
+                       unset = Claude Max default). Use a cheaper model for
+                       large batches, e.g. `--model claude-sonnet-4-6`.
   -h, --help           Show this help
 
 Files:
@@ -73,6 +84,8 @@ while [[ $# -gt 0 ]]; do
     --retry-failed) RETRY_FAILED=true; shift ;;
     --start-from) START_FROM="$2"; shift 2 ;;
     --max-retries) MAX_RETRIES="$2"; shift 2 ;;
+    --min-score) MIN_SCORE="$2"; shift 2 ;;
+    --model) MODEL="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -347,13 +360,17 @@ process_offer() {
     -e "s|{{ID}}|${esc_id}|g" \
     "$PROMPT_FILE" > "$resolved_prompt"
 
-  # Launch claude -p worker (uses default model from Claude Max subscription)
+  # Launch claude -p worker.
+  # Model defaults to the Claude Max subscription default unless --model was
+  # passed. Building the command in an array keeps quoting safe regardless.
+  local -a claude_args=(-p --dangerously-skip-permissions)
+  if [[ -n "$MODEL" ]]; then
+    claude_args+=(--model "$MODEL")
+  fi
+  claude_args+=(--append-system-prompt-file "$resolved_prompt" "$prompt")
+
   local exit_code=0
-  claude -p \
-    --dangerously-skip-permissions \
-    --append-system-prompt-file "$resolved_prompt" \
-    "$prompt" \
-    > "$log_file" 2>&1 || exit_code=$?
+  claude "${claude_args[@]}" > "$log_file" 2>&1 || exit_code=$?
 
   # Cleanup resolved prompt
   rm -f "$resolved_prompt"
@@ -365,9 +382,18 @@ process_offer() {
     # Try to extract score from worker output
     local score="-"
     local score_match
-    score_match=$(grep -oP '"score":\s*[\d.]+' "$log_file" 2>/dev/null | head -1 | grep -oP '[\d.]+' || true)
+   score_match=$(sed -nE 's/.*"score":[[:space:]]*([0-9.]+).*/\1/p' "$log_file" 2>/dev/null | head -1 || true)
     if [[ -n "$score_match" ]]; then
       score="$score_match"
+    fi
+
+    # Check min-score gate
+    if [[ "$score" != "-" && -n "$score" ]] && (( $(echo "$MIN_SCORE > 0" | bc -l) )); then
+      if (( $(echo "$score < $MIN_SCORE" | bc -l) )); then
+        update_state "$id" "$url" "skipped" "$started_at" "$completed_at" "$report_num" "$score" "below-min-score" "$retries"
+        echo "    ⏭️  Skipped (score: $score < min-score: $MIN_SCORE)"
+        continue
+      fi
     fi
 
     update_state "$id" "$url" "completed" "$started_at" "$completed_at" "$report_num" "$score" "-" "$retries"

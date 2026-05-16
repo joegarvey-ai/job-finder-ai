@@ -1,6 +1,6 @@
 {
   "name": "career-ops",
-  "version": "1.0.0",
+  "version": "1.8.0",
   "description": "AI-powered job search pipeline built on Claude Code",
   "scripts": {
     "doctor": "node doctor.mjs",
@@ -22,7 +22,8 @@
     "scan:greenhouse": "node scan-all.mjs --source greenhouse-agg",
     "scan:lever": "node scan-all.mjs --source lever-agg",
     "scan:remote": "node scan-all.mjs --source remote-boards",
-    "discover-slugs": "node discover-ats-slugs.mjs"
+    "discover-slugs": "node discover-ats-slugs.mjs",
+    "gemini:eval": "node gemini-eval.mjs"
   },
   "keywords": [
     "ai",
@@ -39,6 +40,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.0.0",
     "js-yaml": "^4.1.1",
     "playwright": "^1.58.1"
   }

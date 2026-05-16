@@ -1,6 +1,6 @@
 # Career-Ops
 
-[English](README.md) | [Español](README.es.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [Русский](README.ru.md)
+[English](README.md) | [Español](README.es.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [简体中文](README.cn.md) | [繁體中文](README.zh-TW.md)
 
 <p align="center">
   <a href="https://github.com/joegarvey-ai/job-finder-ai"><img src="docs/hero-banner.jpg" alt="Career-Ops — Multi-Agent Job Search System" width="800"></a>
@@ -8,18 +8,20 @@
 
 <p align="center">
   <em>I spent months applying to jobs the hard way. So I engineered the system I wish I had.</em><br>
-  Companies use AI to filter candidates. <strong>I gave candidates AI to <em>choose</em> companies.</strong><br>
+  Companies use AI to filter candidates. <strong>I just gave candidates AI to <em>choose</em> companies.</strong><br>
   <em>Now it's open source.</em>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude_Code-000?style=flat&logo=anthropic&logoColor=white" alt="Claude Code">
   <img src="https://img.shields.io/badge/OpenCode-111827?style=flat&logo=terminal&logoColor=white" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Gemini_CLI-4285F4?style=flat&logo=google&logoColor=white" alt="Gemini CLI">
   <img src="https://img.shields.io/badge/Codex_(soon)-6B7280?style=flat&logo=openai&logoColor=white" alt="Codex">
   <img src="https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white" alt="Playwright">
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT">
+  <a href="TRADEMARK.md"><img src="https://img.shields.io/badge/Trademark-Policy-blue.svg" alt="Trademark Policy"></a>
   <a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
   <br>
   <img src="https://img.shields.io/badge/EN-blue?style=flat" alt="EN">
@@ -29,6 +31,8 @@
   <img src="https://img.shields.io/badge/PT--BR-green?style=flat" alt="PT-BR">
   <img src="https://img.shields.io/badge/KO-white?style=flat" alt="KO">
   <img src="https://img.shields.io/badge/JA-red?style=flat" alt="JA">
+  <img src="https://img.shields.io/badge/ZH--CN-red?style=flat" alt="ZH-CN">
+  <img src="https://img.shields.io/badge/ZH--TW-blue?style=flat" alt="ZH-TW">
 </p>
 
 ---
@@ -169,9 +173,55 @@ See [docs/SETUP.md](docs/SETUP.md) for the full setup guide.
 
 If you'd rather have an AI agent set this up for you, clone the repo and then open it in Claude Code, Kiro, or any agentic coding tool and say:
 
-> "Read CLAUDE.md and README.md. Then read cv.example.md and config/profile.example.yml. Create cv.md and config/profile.yml for me based on the following background: [paste your resume or career summary here]. Walk me through any steps that need my input."
+> "Read AGENTS.md and README.md. Then read cv.example.md and config/profile.example.yml. Create cv.md and config/profile.yml for me based on the following background: [paste your resume or career summary here]. Walk me through any steps that need my input."
 
 The agent will handle file setup, ask you for your JSearch API key, and run a test scan. No terminal experience required beyond the initial clone and `npm install`.
+
+## Gemini CLI Integration
+
+Career-ops supports [Gemini CLI](https://github.com/google-gemini/gemini-cli) natively — the same way it supports Claude Code and OpenCode. All 15 slash commands are available, using the same `modes/*.md` evaluation logic.
+
+### Option A — Native Gemini CLI (Recommended)
+
+```bash
+# 1. Install Gemini CLI
+npm install -g @google/gemini-cli
+# or: npx @google/gemini-cli --version
+
+# 2. Authenticate (free — uses your Google account)
+gemini auth
+
+# 3. Run in the career-ops directory
+cd career-ops
+gemini
+
+# 4. Use slash commands just like Claude Code
+/career-ops "Senior AI Engineer at Anthropic..."
+/career-ops-evaluate --file ./jds/openai.txt
+/career-ops-scan
+/career-ops-pdf
+/career-ops-tracker
+```
+
+The `GEMINI.md` file is auto-loaded as context. All 15 commands are defined in `.gemini/commands/*.toml`.
+
+### Option B — Standalone API Script (No CLI install needed)
+
+```bash
+# 1. Get a free API key at https://aistudio.google.com/apikey
+cp .env.example .env
+# Edit .env → set GEMINI_API_KEY=your_key_here
+
+# 2. Install dependencies
+npm install
+
+# 3. Evaluate a job description
+node gemini-eval.mjs "We are looking for a Senior AI Engineer..."
+node gemini-eval.mjs --file ./jds/my-job.txt
+npm run gemini:eval -- "JD text here"
+```
+
+> **Free tier:** Both options work without billing. Native CLI uses Google OAuth; the API script uses `gemini-2.5-flash` (15 RPM, 1M tokens/day free).
 
 ## Usage
 
@@ -247,7 +297,8 @@ Features: 6 filter tabs, 4 sort modes, grouped/flat view, lazy-loaded previews, 
 
 ```
 career-ops/
-├── CLAUDE.md                    # Agent instructions
+├── AGENTS.md                    # Canonical agent instructions (all CLIs)
+├── CLAUDE.md                    # Claude Code wrapper (imports AGENTS.md)
 ├── cv.example.md                # Template CV (copy to cv.md)
 ├── article-digest.md            # Your proof points (optional)
 ├── config/
@@ -306,7 +357,23 @@ career-ops/
 
 This fork was built by Joe Garvey, a product leader at Amazon, to extend the original career-ops system with broader job board coverage and Obsidian integration. See [FORK_NOTES.md](FORK_NOTES.md) for the full change log.
 
-GitHub: [github.com/joegarvey-ai](https://github.com/joegarvey-ai)
+Fork GitHub: [github.com/joegarvey-ai](https://github.com/joegarvey-ai)
+
+## About the Original Author
+
+I'm Santiago -- Head of Applied AI, former founder (built and sold a business that still runs with my name on it). I built career-ops to manage my own job search. It worked: I used it to land my current role.
+
+My portfolio and other open source projects → [santifer.io](https://santifer.io)
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=santifer%2Fcareer-ops&type=timeline&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=santifer/career-ops&type=timeline&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=santifer/career-ops&type=timeline&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=santifer/career-ops&type=timeline&legend=top-left" />
+ </picture>
+</a>
 
 ## Disclaimer
 
@@ -319,8 +386,27 @@ GitHub: [github.com/joegarvey-ai](https://github.com/joegarvey-ai)
 
 See [LEGAL_DISCLAIMER.md](LEGAL_DISCLAIMER.md) for full details. This software is provided under the [MIT License](LICENSE) "as is", without warranty of any kind.
 
-## License
+## Contributors
 
-MIT
+<a href="https://github.com/santifer/career-ops/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=santifer/career-ops" />
+</a>
+
+Got hired using career-ops? [Share your story!](https://github.com/santifer/career-ops/issues/new?template=i-got-hired.yml)
+
+## License & Trademark
+
+The code is licensed under [MIT](LICENSE). The "career-ops" name and
+brand are governed by the [Trademark Policy](TRADEMARK.md) — permissive
+for community use, reserved for commercial product naming and
+endorsement.
 
 Built on [santifer/career-ops](https://github.com/santifer/career-ops) -- MIT License.
+
+## Connect with the Original Author
+
+[![Website](https://img.shields.io/badge/santifer.io-000?style=for-the-badge&logo=safari&logoColor=white)](https://santifer.io)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/santifer)
+[![X](https://img.shields.io/badge/X-000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/santifer)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/8pRpHETxa4)
+[![Email](https://img.shields.io/badge/Email-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:hi@santifer.io)

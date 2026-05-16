@@ -1,147 +1,91 @@
-# Mode: oferta — Full A-G Evaluation
+# Mode: job — Full A-G Evaluation
 
-When the candidate pastes an offer (text or URL), ALWAYS deliver all 7 blocks (A-F evaluation + G legitimacy). All output in English.
+When the candidate pastes a job (text or URL), ALWAYS deliver the 7 blocks (A-F evaluation + G legitimacy):
 
 ## Step 0 — Archetype Detection
 
-**CRITICAL:** Ignore the six default archetypes in `modes/_shared.md`. Use the four archetypes defined in `modes/_profile.md`:
-
-1. **AI/ML Product Leader** — LLM/RAG/agentic/MCP product strategy, model evals, AI roadmap, buy-vs-build
-2. **Developer Platforms Product Leader** — developer experience, developer tools, data platforms, 3MM+ developer audiences
-3. **MarTech / Analytics Product Leader** — MarTech stack, CDP, attribution, segmentation, marketing automation, demand gen
-4. **Principal PM IC (Platform / AI / Data)** — deep product strategy without direct reports, horizontal cross-brand influence
-
-Classify the JD into one of these four (or a hybrid of the closest two). This determines:
-- Which proof points to prioritize in Block B
-- How to rewrite the summary in Block E
-- Which STAR stories to prepare in Block F
-
-**Hard gate before proceeding:** If the JD is an engineering role (Software/ML/Data/Platform/Solutions Engineer, SRE, DevOps, Applied Scientist, Technical PM requiring coding), STOP evaluating and mark the offer `SKIP — title mismatch`. Joe is a strategic PM, not an engineer.
-
-## Structured Scoring Checklist — Adjusted Score
-
-**Before writing the Global score**, evaluate the JD against these six weighted dimensions. Each dimension is scored 0–5 independently. The weighted composite IS the Global score written to the report header.
-
-| # | Dimension | Scoring Logic | Weight |
-|---|-----------|--------------|--------|
-| 1 | **CV Match** | Count JD "must-have" requirements with strong CV evidence vs. total must-haves. 5 = 90%+ match, 4 = 75%+, 3 = 60%+, 2 = 40%+, 1 = <40% | 0.30 |
-| 2 | **Domain Fit** | Does the JD require domain expertise Joe lacks? 5 = exact domain match, 4 = adjacent domain, 3 = transferable, 2 = weak transfer, 1 = no relevant domain experience | 0.20 |
-| 3 | **Location** | 5 = remote, 4 = Seattle/acceptable metro hybrid, 3 = TX/AZ/KC hybrid, 2 = other US hybrid (negotiable), 1 = on-site only or international | 0.15 |
-| 4 | **Comp** | 5 = above $350K target, 4 = $250–350K, 3 = $200–250K, 2 = near floor, 1 = below $200K floor | 0.10 |
-| 5 | **Hands-On Risk** | Does the JD require coding, prototyping, code review, or technical exercises? 5 = no technical IC work, 4 = light technical (SQL, data analysis), 3 = ambiguous, 2 = likely coding expected, 1 = explicit coding/prototyping requirement | 0.15 |
-| 6 | **Career Trajectory** | Does this role move Joe toward his goals (builder-oriented, less people management, AI products)? 5 = perfect trajectory, 4 = good, 3 = neutral, 2 = lateral, 1 = regression | 0.10 |
-
-**Formula:** `adj_score = Σ (dimension_score × weight)`
-
-**Output the checklist in the report** between Block A and Block B as a scoring table:
-
-```markdown
-## Scoring Checklist
-
-| Dimension | Score | Weight | Weighted | Rationale |
-|-----------|-------|--------|----------|-----------|
-| CV Match | X | 0.30 | X.XX | ... |
-| Domain Fit | X | 0.20 | X.XX | ... |
-| Location | X | 0.15 | X.XX | ... |
-| Comp | X | 0.10 | X.XX | ... |
-| Hands-On Risk | X | 0.15 | X.XX | ... |
-| Career Trajectory | X | 0.10 | X.XX | ... |
-| **Global** | | | **X.X** | |
-```
-
-**Scale mapping (for report header and scanner tier):**
-- adj_score ≥ 4.0 → 🟢 APPLY
-- adj_score 3.0–3.9 → 🟡 REVIEW
-- adj_score 2.0–2.9 → 🟠 WEAK
-- adj_score < 2.0 → ⚪ SKIP
-
-**Hard gates still apply:** If Comp < $200K → SKIP regardless of composite. If hands-on coding requirement → cap at 3.0 and flag. These override the formula.
-
-**Reference files for evaluation:** Read from `context/` (synced from Obsidian Canonical Files) when available:
-- `context/Resume_Content_Source_of_Truth.md` — canonical resume content
-- `context/Resume_Language_Style_Guide.md` — red/green flag keywords for JD matching
-- `context/Career_Accomplishments_Tracker.md` — detailed accomplishments
-- `context/Current_Role_Metrics.md` — current role metrics
-
-Fall back to `cv.md`, `config/profile.yml`, and `modes/_profile.md` when context files don't exist.
-
----
+Classify the job into one of the 6 archetypes (see `_shared.md`). If it is a hybrid, indicate the 2 closest ones. This determines:
+- Which proof points to prioritize in block B
+- How to rewrite the summary in block E
+- Which STAR stories to prepare in block F
 
 ## Block A — Role Summary
 
 Table with:
-- Detected archetype (one of Joe's four, or hybrid)
-- Domain (AI/ML, developer platform, MarTech/analytics, data infra)
-- Function (strategy / roadmap / team lead / IC)
-- Seniority (Director / Sr Director / Head / Principal IC / VP)
-- Remote policy (remote / hybrid / onsite — and in which metro)
-- Team size (if mentioned — does Joe manage people or is this IC?)
-- TL;DR in one sentence
+- Archetype detected
+- Domain (platform/agentic/LLMOps/ML/enterprise)
+- Function (build/consult/manage/deploy)
+- Seniority
+- Remote (full/hybrid/onsite)
+- Team size (if mentioned)
+- TL;DR in 1 sentence
 
-## Block B — CV Match
+## Block B — Match with CV
 
-Read `cv.md`. Create a table mapping each JD requirement to exact lines in the CV.
+Read `cv.md`. Create a table with each JD requirement mapped to exact lines in the CV.
 
-**Framed to the archetype:**
-- **AI/ML Product Leader** → lead with RAG DevAssistant (2.5–4K MAU), Close The Loop LLM feedback platform, Amazon Developer MCP Server, ML segmentation
-- **Developer Platforms** → lead with 22 products / 15-person team / 13 BUs / $4M budget / 4.5MM annual visitors / 3MM+ developers / enterprise data warehouse (100+ datasets, days→minutes)
-- **MarTech / Analytics** → lead with multi-touch attribution (68% of Prime Video/Music signups), Adobe Target personalization (42% CTR, 2x conversion), ML segmentation (85%/32%/47%), 15-phase marketing system integration
-- **Principal PM IC** → lead with 2026 strategy (36 initiatives), 3-year roadmap and buy-vs-build across 22 products + 44 external tools, maintenance overhead 47%→31%
+**Adapted to the archetype:**
+- If FDE → prioritize delivery speed and client-facing proof points
+- If SA → prioritize system design and integrations
+- If PM → prioritize product discovery and metrics
+- If LLMOps → prioritize evals, observability, pipelines
+- If Agentic → prioritize multi-agent, HITL, orchestration
+- If Transformation → prioritize change management, adoption, scaling
 
 **Gaps** section with mitigation strategy for each. For each gap:
 1. Is it a hard blocker or a nice-to-have?
-2. Can Joe demonstrate adjacent experience?
-3. Is there a proof point in the CV or builder portfolio (PlateMath, SpendSense, treasurehunter.show) that covers it?
-4. Concrete mitigation plan (cover letter phrase, reframe, etc.)
+2. Can the candidate demonstrate adjacent experience?
+3. Is there a portfolio project that covers this gap?
+4. Concrete mitigation plan (phrase for cover letter, quick project, etc.)
 
 ## Block C — Level and Strategy
 
-1. **Level detected in the JD** vs **Joe's natural level** (L7 Senior Manager / Head of Amazon Developer Technology). Flag any downlevel.
-2. **"Sell senior without lying" plan:** specific phrases framed to the archetype, concrete accomplishments to highlight, how to position the 15-person horizontal team and 22-product portfolio as structural differentiators.
-3. **"If they downlevel me" plan:** accept only if total comp clears $200K and there's a clear promotion path at 12 months. Do not accept a senior-PM (non-Director) role unless it's a Principal IC track.
+1. **Level detected** in the JD vs **candidate's natural level for that archetype**
+2. **"Sell senior without lying" plan**: specific phrases adapted to the archetype, concrete achievements to highlight, how to position founder experience as an advantage
+3. **"If they downlevel me" plan**: accept if compensation is fair, negotiate 6-month review, clear promotion criteria
 
 ## Block D — Comp and Demand
 
 Use WebSearch for:
-- Current salary ranges for the role (Glassdoor, Levels.fyi, Blind)
-- Company's comp reputation
+- Current salaries for the role (Glassdoor, Levels.fyi, Blind)
+- Company's compensation reputation
 - Demand trend for the role
 
-Table with data and cited sources. If no data, say so instead of inventing.
+Table with data and cited sources. If there is no data, state it instead of inventing.
 
-**Hard gate:** Flag if total comp is below $200K (SKIP). Cap global score at 4.0 if total comp is between $200K and $350K. No cap at or above $350K.
+## Block E — Customization Plan
 
-## Block E — Personalization Plan
-
-| # | Section | Current | Proposed change | Why |
-|---|---------|---------|-----------------|-----|
+| # | Section | Current status | Proposed change | Why |
+|---|---------|---------------|------------------|---------|
 | 1 | Summary | ... | ... | ... |
 | ... | ... | ... | ... | ... |
 
-Top 5 changes to the CV + top 5 changes to LinkedIn to maximize the match.
+Top 5 changes to CV + Top 5 changes to LinkedIn to maximize match.
 
 ## Block F — Interview Plan
 
-6–10 STAR+R stories (STAR + **Reflection**) mapped to JD requirements:
+6-10 STAR+R stories mapped to JD requirements (STAR + **Reflection**):
 
-| # | JD requirement | STAR+R story | S | T | A | R | Reflection |
-|---|----------------|--------------|---|---|---|---|------------|
+| # | JD Requirement | STAR+R Story | S | T | A | R | Reflection |
+|---|-----------------|-----------------|---|---|---|---|------------|
 
-The **Reflection** column captures what was learned or what would be done differently. This signals seniority — junior candidates describe what happened, senior candidates extract lessons. Joe's CV already has seven STAR+R stories in the Career Stories section — reuse them first before inventing new ones.
+The **Reflection** column captures what was learned or what would be done differently. This signals seniority — junior candidates describe what happened, senior candidates extract lessons.
 
-**Story Bank:** If `interview-prep/story-bank.md` exists, check whether these stories are already there. If not, append new ones. Over time this builds a reusable bank of 5–10 master stories that adapt to any interview question.
+**Story Bank:** If `interview-prep/story-bank.md` exists, check if any of these stories are already there. If not, append new ones. Over time this builds a reusable bank of 5-10 master stories that can be adapted to any interview question.
 
-**Framed to the archetype:**
-- **AI/ML Product Leader** → emphasize shipping production AI, metrics, product discovery, buy-vs-build
-- **Developer Platforms** → emphasize the horizontal team, cross-brand visibility, infrastructure extensibility, developer lifecycle thinking
-- **MarTech / Analytics** → emphasize attribution rigor, segmentation wins, MarTech stack ownership, Marketing-Sales-Engineering alignment
-- **Principal PM IC** → emphasize strategy depth, trade-offs, influence without authority, 3-year roadmap thinking
+**Selected and framed according to the archetype:**
+- FDE → emphasize delivery speed and client-facing
+- SA → emphasize architectural decisions
+- PM → emphasize discovery and trade-offs
+- LLMOps → emphasize metrics, evals, production hardening
+- Agentic → emphasize orchestration, error handling, HITL
+- Transformation → emphasize adoption, organizational change
 
 Also include:
-- 1 recommended case study (which of Joe's projects to present and how — DevAssistant, MCP Server, Enterprise Data Platform, or ML Attribution are the strongest)
-- Red-flag questions and how to answer them (e.g., "Why are you leaving Amazon?", "How hands-on are you with code?", "Have you owned a P&L?")
+- 1 recommended case study (which of their projects to present and how)
+- Red-flag questions and how to answer them (e.g., "why did you sell your company?", "do you have a team of reports?")
 
-## Bloque G — Posting Legitimacy
+## Block G — Posting Legitimacy
 
 Analyze the job posting for signals that indicate whether this is a real, active opening. This helps the user prioritize their effort on opportunities most likely to result in a hiring process.
 
@@ -149,7 +93,7 @@ Analyze the job posting for signals that indicate whether this is a real, active
 
 ### Signals to analyze (in order):
 
-**1. Posting Freshness** (from Playwright snapshot, already captured in Paso 0):
+**1. Posting Freshness** (from Playwright snapshot, already captured in Step 0):
 - Date posted or "X days ago" -- extract from page
 - Apply button state (active / closed / missing / redirects to generic page)
 - If URL redirected to generic careers page, note it
@@ -200,15 +144,15 @@ Analyze the job posting for signals that indicate whether this is a real, active
 
 ## Post-evaluation
 
-**ALWAYS** after generating blocks A–G:
+**ALWAYS** after generating blocks A-G:
 
 ### 1. Save report .md
 
-Save the full evaluation to `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
+Save full evaluation in `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
 
 - `{###}` = next sequential number (3 digits, zero-padded)
-- `{company-slug}` = company name lowercased, hyphenated
-- `{YYYY-MM-DD}` = today's date
+- `{company-slug}` = company name in lowercase, without spaces (use hyphens)
+- `{YYYY-MM-DD}` = current date
 
 **Report format:**
 
@@ -216,54 +160,58 @@ Save the full evaluation to `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
 # Evaluation: {Company} — {Role}
 
 **Date:** {YYYY-MM-DD}
-**URL:** {job posting URL}
-**Archetype:** {detected — from _profile.md}
-**Score:** {X.X/5}
+**URL:**
+**Archetype:** {detected}
+**Score:** {X/5}
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **PDF:** {path or pending}
 
 ---
 
 ## A) Role Summary
-(full content of Block A)
+(full content of block A)
 
-## B) CV Match
-(full content of Block B)
+## B) Match with CV
+(full content of block B)
 
 ## C) Level and Strategy
-(full content of Block C)
+(full content of block C)
 
 ## D) Comp and Demand
-(full content of Block D)
+(full content of block D)
 
-## E) Personalization Plan
-(full content of Block E)
+## E) Customization Plan
+(full content of block E)
 
 ## F) Interview Plan
-(full content of Block F)
+(full content of block F)
 
 ## G) Posting Legitimacy
-(full content of Block G)
+(full content of block G)
 
 ## H) Draft Application Answers
-(only if score >= 4.5 — drafts for the application form)
+(only if score >= 4.5 — draft answers for the application form)
 
 ---
 
 ## Keywords extracted
-(15–20 keywords from the JD for ATS optimization)
+(list of 15-20 keywords from the JD for ATS optimization)
 ```
 
-### 2. Register in tracker
+### 2. Record in tracker
 
-**ALWAYS** write a TSV to `batch/tracker-additions/{num}-{company-slug}.tsv` (NEVER edit `data/applications.md` directly to add rows). Nine tab-separated columns in this order:
+**ALWAYS** record in `data/applications.md`:
+- Next sequential number
+- Current date
+- Company
+- Role
+- Score: match average (1-5)
+- Status: `Evaluated`
+- PDF: ❌ (or ✅ if auto-pipeline generated PDF)
+- Report: link relative to the report .md (e.g., `[001](reports/001-company-2026-01-01.md)`)
 
+**Tracker format:**
+
+```markdown
+| # | Date | Company | Role | Score | Status | PDF | Report |
 ```
-{num}\t{date}\t{company}\t{role}\t{status}\t{score}/5\t{pdf_emoji}\t[{num}](reports/{num}-{slug}-{date}.md)\t{note}
-```
-
-- `status`: `Evaluated` (or `SKIP` if the title-match gate fails)
-- `score`: format `X.X/5`
-- `pdf`: ❌ (or ✅ if the auto-pipeline generated one)
-
-Then run `node merge-tracker.mjs` to merge into `data/applications.md`.
