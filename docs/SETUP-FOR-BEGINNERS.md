@@ -203,6 +203,85 @@ Each time you want to use career-ops:
 
 ---
 
+## Part 7 — Automation (optional but recommended)
+
+The whole point of the system is that **new jobs show up in your tracker without you doing anything**. Once a week (or every few days) it scans the portals, dedupes against what you've already seen, and adds new listings to `data/pipeline.md`. You then log in, review the digest, and pick which ones to evaluate.
+
+You have three ways to set this up. Pick the one that matches your comfort level.
+
+### Option A — Inside Claude Code (easiest, no terminal needed after setup)
+
+Claude Code has a built-in `/schedule` skill. Inside Claude Code, just type:
+
+```
+/schedule every 3 days at 9am /career-ops scan
+```
+
+That's it. Claude Code will run the scan command on the schedule you set. No cron files, no Task Scheduler. You can also say it in plain English:
+
+> "Schedule a scan every 3 days at 9am."
+
+To see your scheduled tasks: `/schedule list`. To remove one: `/schedule remove <id>`.
+
+The catch: this only works while Claude Code is running on your machine. If you reboot, restart Claude Code and the schedule resumes.
+
+### Option B — macOS / Linux cron or launchd
+
+If you want the scan to run even when Claude Code isn't open, use system-level scheduling.
+
+```bash
+# Copy the template and edit the path inside it:
+cp scan-and-sync.example.sh scan-and-sync.sh
+chmod +x scan-and-sync.sh
+# Edit scan-and-sync.sh and set CAREER_OPS_DIR to your actual clone path.
+
+# Test it once manually:
+./scan-and-sync.sh
+```
+
+Now set it to run on a schedule.
+
+**macOS (launchd) — preferred:**
+```bash
+# Edit your crontab and add a line for every-3-days at 9am:
+crontab -e
+# Then paste this (replace the path):
+# 0 9 */3 * *  /Users/yourname/Projects/job-finder-ai/scan-and-sync.sh
+```
+
+**Linux (cron):** same `crontab -e` command and same line.
+
+The log file `data/scan-and-sync.log` will show what happened each run.
+
+### Option C — Windows Task Scheduler
+
+```powershell
+# Copy the PowerShell template and edit the path inside it:
+Copy-Item scan-and-sync.example.ps1 scan-and-sync.ps1
+# Edit scan-and-sync.ps1 and set $CareerOpsDir to your actual clone path.
+
+# Test it once:
+.\scan-and-sync.ps1
+```
+
+Then open Task Scheduler (search "Task Scheduler" in Start), click "Create Basic Task":
+- **Name:** career-ops scan
+- **Trigger:** Daily, recur every 3 days, start at 9:00 AM
+- **Action:** Start a program
+  - **Program:** `powershell.exe`
+  - **Arguments:** `-ExecutionPolicy Bypass -File "C:\Users\YourName\Projects\job-finder-ai\scan-and-sync.ps1"`
+  - **Start in:** `C:\Users\YourName\Projects\job-finder-ai`
+
+### What runs during an automated scan?
+
+1. The Node.js scrapers (Greenhouse, Lever, Wellfound, JSearch if you set up a key, plus remote boards) — fast, no AI cost.
+2. Claude Code does an LLM scan over the companies in your `portals.yml` — small AI cost.
+3. New roles get appended to `data/pipeline.md` and `data/new_roles_YYYY-MM-DD.md` (the daily digest).
+
+The automation does NOT evaluate or score the new roles — that's done on-demand when you say "evaluate this URL" inside Claude Code. So your token bill stays predictable.
+
+---
+
 ## Troubleshooting
 
 ### `command not found: node` (or claude, or git)
