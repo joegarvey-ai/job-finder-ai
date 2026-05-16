@@ -1,0 +1,19 @@
+score:
+  min: 3.0
+  max: 4.5
+
+must_contain:
+  - "Block A"
+  - "Block B"
+  - "Block G"
+
+legitimacy_any_of:
+  - "High Confidence"
+  - "Proceed with Caution"
+
+notes: |
+  Solid PM role at a credible data platform company. Comp ($200-235K base /
+  $300-380K total) is right around Joe's target. Title matches PM family.
+  Score should land in the "Yellow / Review" 3.0-4.5 band — not an automatic
+  apply, but not a SKIP either. Tests that the evaluator handles ambiguous
+  fits with moderate scores rather than collapsing to 5.0 or 0.0.

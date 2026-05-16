@@ -1,0 +1,29 @@
+Senior Machine Learning Engineer
+
+We're hiring a Senior ML Engineer to design, build, and deploy ML systems in production. You will own the full ML lifecycle: data pipelines, training, deployment, monitoring.
+
+Responsibilities:
+- Design and implement production ML pipelines using Python, PyTorch, and Ray
+- Write production-grade code that goes through code review and ships to millions of users
+- Lead technical design discussions and pair on complex implementation problems
+- On-call rotation for the ML platform (1 week / 6 weeks)
+- Mentor junior engineers and contribute to engineering culture
+
+Required:
+- 6+ years of production ML engineering experience
+- Strong programming skills in Python; expert-level familiarity with PyTorch/TensorFlow
+- Experience with distributed training, feature stores, model serving (Triton, KServe)
+- Comfortable with on-call and incident response
+- Code review and pair programming experience
+
+Nice to have:
+- Open-source contributions
+- Experience with LLM training (RLHF, PPO, DPO)
+- AWS/GCP certification
+
+Comp:
+- Base: $220K–$280K
+- Total: $350K–$500K (base + equity)
+- Remote within US
+
+Location: Remote (US)

@@ -1,0 +1,14 @@
+score:
+  min: 0.0
+  max: 3.0
+
+must_contain:
+  - "Block D"
+  - "Block G"
+
+notes: |
+  Comp ($130-160K base) is below Joe's $200K floor in _profile.md. The
+  evaluator should hit the hard comp gate and either SKIP or cap at a low
+  score. Title is right (Product Manager), so a non-comp-aware evaluator
+  would score this 3.5+. If we see scores above 3.0, the comp floor logic
+  is broken.

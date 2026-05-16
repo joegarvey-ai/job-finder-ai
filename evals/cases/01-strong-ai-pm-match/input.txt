@@ -1,0 +1,30 @@
+Director of AI Product
+
+Acme AI is hiring a Director of AI Product to lead the strategy and roadmap for our LLM platform. You will own the end-to-end product lifecycle for our developer-facing AI tools used by 2M+ developers worldwide.
+
+What you'll do:
+- Define and own the multi-year product roadmap for our LLM/RAG platform and developer tooling
+- Lead a cross-functional team of PMs, engineers, and designers (15+ direct and matrixed reports)
+- Partner with engineering leadership on technical strategy, buy-vs-build decisions, and evals
+- Drive go-to-market alignment with sales, marketing, and customer success
+- Define and track product KPIs: adoption, engagement, retention, NPS
+
+Required:
+- 8+ years of product management experience, 3+ at Director level or above
+- Track record shipping production AI/ML or developer platform products at scale (millions of users)
+- Strong strategic thinking and ability to operate at the intersection of business and technical strategy
+- Experience leading cross-functional teams of 10+
+- Excellent written and verbal communication
+
+Nice to have:
+- Experience in B2B SaaS or developer tools
+- Background in machine learning, LLMs, or AI/agentic systems
+- MBA or equivalent
+
+Compensation:
+- Base: $250K–$300K
+- Total: $400K–$550K (base + equity + bonus)
+- Remote-friendly within US
+- Full benefits, 401k match, unlimited PTO
+
+Location: Remote (US) or hybrid in San Francisco

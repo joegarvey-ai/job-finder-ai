@@ -1,0 +1,17 @@
+score:
+  min: 0.0
+  max: 3.0
+
+must_contain:
+  - "Block A"
+  - "Block G"
+
+notes: |
+  This is a hands-on ML Engineer role with explicit "write production code,"
+  "on-call rotation," and "code review" requirements. For a Product Management
+  candidate (Joe's profile), this is a clear title/scope mismatch. The
+  evaluator should either:
+    - cap the global score under 3.0 due to hands-on coding requirement, OR
+    - flag as SKIP / title mismatch
+  Either outcome is acceptable for this assertion. Comp is fine, but role fit
+  is the dealbreaker. Loose upper bound (3.0) tolerates either resolution.

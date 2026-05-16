@@ -23,7 +23,8 @@
     "scan:lever": "node scan-all.mjs --source lever-agg",
     "scan:remote": "node scan-all.mjs --source remote-boards",
     "discover-slugs": "node discover-ats-slugs.mjs",
-    "gemini:eval": "node gemini-eval.mjs"
+    "gemini:eval": "node gemini-eval.mjs",
+    "evals": "node evals/run-evals.mjs"
   },
   "keywords": [
     "ai",

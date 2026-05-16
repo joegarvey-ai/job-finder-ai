@@ -1,0 +1,16 @@
+score:
+  min: 0.0
+  max: 3.5
+
+must_contain:
+  - "Block G"
+
+legitimacy_any_of:
+  - "Proceed with Caution"
+  - "Suspicious"
+
+notes: |
+  This JD is deliberately content-free: no company name, no comp range, no
+  concrete requirements, marketing-speak only. Block G (Posting Legitimacy)
+  should flag low confidence. If Block G says "High Confidence" on a JD
+  with literally one-word bullet points, the legitimacy check is broken.

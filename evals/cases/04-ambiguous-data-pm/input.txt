@@ -1,0 +1,27 @@
+Senior Product Manager, Data Platform
+
+Mid-stage analytics company (Series C, ~300 people) hiring a Senior PM to own our data ingestion + transformation platform. This product serves 1500+ B2B customers and processes 10B+ events/day.
+
+What you'll do:
+- Own roadmap for ingestion connectors, ELT pipelines, and the orchestration layer
+- Partner with engineering to scope quarterly releases and unblock dependencies
+- Be the voice of the customer in design reviews and architecture discussions
+- Define and monitor product KPIs: time-to-value, connector reliability, query latency
+- Coordinate cross-team launches with Marketing, Sales, and Customer Success
+
+Required:
+- 6+ years of PM experience, with 3+ years in data products or developer platforms
+- Strong technical foundation; comfortable in SQL and reading API docs
+- Experience with B2B SaaS pricing and packaging decisions
+- Track record of shipping technical products to enterprise customers
+
+Nice to have:
+- Background in data engineering or ML
+- Experience with usage-based pricing models
+
+Compensation:
+- Base: $200K–$235K
+- Total: $300K–$380K
+- Remote (US) or NYC hybrid
+
+Location: Remote (US) or hybrid NYC

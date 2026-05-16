@@ -1,0 +1,22 @@
+score:
+  min: 3.8
+  max: 5.0
+
+must_contain:
+  - "Block A"
+  - "Block B"
+  - "Block C"
+  - "Block D"
+  - "Block E"
+  - "Block F"
+  - "Block G"
+
+legitimacy_any_of:
+  - "High Confidence"
+  - "Proceed with Caution"
+
+notes: |
+  Strong AI Product role with comp well above Joe's $200K floor and a target
+  archetype match. Should score 4+ and identify as AI/Platform PM archetype.
+  Block G should rate it High Confidence (clear company, real comp range,
+  no red flags).

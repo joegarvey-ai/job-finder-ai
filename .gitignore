@@ -49,6 +49,7 @@ report-sync.sh
 .resolved-prompt-*
 node_modules/
 bun.lock
+evals/results/
 
 # OS
 .DS_Store
