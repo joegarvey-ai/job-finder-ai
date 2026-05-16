@@ -282,6 +282,68 @@ The automation does NOT evaluate or score the new roles — that's done on-deman
 
 ---
 
+## Part 8 — The last mile: tailoring your resume in Claude Desktop
+
+Career-ops in Claude Code handles discovery, scoring, and evaluation. But the *application itself* — picking a top-ranked role, reading the full JD carefully, tailoring your resume word-by-word to match it, and producing a Word doc you can submit — is best done in **Claude Desktop**.
+
+Why a different tool for this step?
+
+- **.docx output.** Claude Code generates PDFs (and optionally LaTeX). Most applications want a Word doc. Claude Desktop can produce .docx directly via filesystem MCPs or by writing the file for you.
+- **Friendlier review UX.** Tweaking a paragraph until it sings is easier in a chat window than a CLI.
+- **Hard separation between "automated" and "actually applying."** The system is designed so that nothing is submitted without you explicitly choosing to. Keeping the apply step in a separate tool reinforces that.
+
+### One-time setup
+
+1. Install **Claude Desktop** from [claude.ai/download](https://claude.ai/download).
+2. **Give Desktop access to your career-ops folder.** This is the key step.
+   - In Claude Desktop, open Settings → Connectors (or MCP Servers, depending on version).
+   - Add a filesystem connector pointing to your career-ops folder (e.g., `~/Projects/job-finder-ai`). Desktop will then be able to read your `data/`, `reports/`, `cv.md`, and `_profile.md`.
+   - If filesystem MCP isn't an option, the fallback is to paste content into the chat manually.
+3. (Optional) Add a **Microsoft Word MCP** if you want Desktop to write `.docx` files directly. Search the MCP registry for one — there are several community options. If you don't add one, Desktop can still produce the content as markdown and you paste it into Word.
+
+### The handoff workflow
+
+After Claude Code has done its weekly scan and ranking, the relevant files are:
+
+| File | What's in it |
+|------|--------------|
+| `data/pipeline.md` | All newly discovered roles, not yet evaluated |
+| `data/new_roles_YYYY-MM-DD.md` | The latest scan's digest (most recent first) |
+| `reports/` | Full evaluations for roles you've asked Claude Code to evaluate |
+| `data/applications.md` | Your tracker — what's evaluated, what's applied to |
+| `cv.md` | Your canonical resume |
+| `modes/_profile.md` | Your archetypes, narrative, comp targets, deal-breakers |
+
+In Claude Desktop, start a new conversation and use a prompt like:
+
+> "I want to apply to this job: [paste the URL or paste the JD].
+>
+> First, read my resume at `~/Projects/job-finder-ai/cv.md` and my profile context at `~/Projects/job-finder-ai/modes/_profile.md`. If there's an evaluation report for this role at `~/Projects/job-finder-ai/reports/` already, read that too.
+>
+> Then produce a tailored version of my resume as a `.docx` that:
+> - Mirrors the language and keywords from the JD (without fabricating experience)
+> - Reorders bullet points to lead with the most JD-relevant proof points
+> - Keeps the same structure as my canonical CV
+>
+> Show me a side-by-side diff of what changed before saving the file."
+
+Desktop will then read the files, draft the tailored resume, show you the diffs, and (if you have a Word MCP) save the `.docx` to a location you specify. Without a Word MCP, you'll get the content as markdown and a `.docx` won't be produced automatically — you can copy-paste into Word as a fallback.
+
+### Final review before clicking submit
+
+Always do this manually, in the application portal:
+
+1. Open the saved `.docx` in Word/Pages and skim for hallucinations — AI sometimes invents skills, certifications, or job dates. Verify every line is factually true.
+2. Compare against the JD requirements one more time.
+3. Customize the cover letter / application questions yourself (Desktop can draft these too, but read them carefully).
+4. **You click submit.** Not Claude, not the script — you.
+
+After you submit, go back to Claude Code and update the tracker:
+
+> "I just applied to [Company] / [Role]. Update applications.md."
+
+---
+
 ## Troubleshooting
 
 ### `command not found: node` (or claude, or git)
