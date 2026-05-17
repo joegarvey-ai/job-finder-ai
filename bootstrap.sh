@@ -127,7 +127,25 @@ else
   warn "doctor reported issues — see above"
 fi
 
-# ── Step 8: Next-step message ─────────────────────────────────────────────
+# ── Step 8: Optional — set up recurring scans (macOS launchd) ─────────────
+# Skipped silently on non-macOS or when stdin isn't a TTY (e.g. piped install).
+if [ "$(uname)" = "Darwin" ] && [ -t 0 ] && [ -f "./setup-scheduler.sh" ]; then
+  echo
+  printf "Set up recurring scans every 3 days via launchd? [y/N] "
+  read -r reply
+  case "$reply" in
+    [yY]|[yY][eE][sS])
+      ./setup-scheduler.sh --no-fire \
+        && ok "Scheduler installed (next fire on the 3-day interval)" \
+        || warn "setup-scheduler.sh failed — re-run manually: ./setup-scheduler.sh"
+      ;;
+    *)
+      note "Skipped. Run ./setup-scheduler.sh any time to enable it."
+      ;;
+  esac
+fi
+
+# ── Step 9: Next-step message ─────────────────────────────────────────────
 cat <<'EOF'
 
 Bootstrap complete.
