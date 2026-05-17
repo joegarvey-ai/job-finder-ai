@@ -127,10 +127,12 @@ const updatedLines = lines.map(line => {
   const evalData = evalScores.get(url);
   const cols = line.split('|').map(c => c.trim()).filter(Boolean);
 
-  // Determine if this row already has an Adj. column (2nd col is empty, score-like, or '—')
-  const hasAdj = cols.length >= 8 && (
-    cols[1] === '' || cols[1] === '—' || cols[1].match(/^[\d.]+(?:\/5)?$/)
-  );
+  // Determine if this row already has an Adj. column (2nd col is empty, score-like, or '—').
+  // Threshold is >=7 because actioned rows are 7 cols when formatted with Adj.
+  // (Score | Adj. | Company | Role | Status | Link | Added). Using >=8 here would
+  // misclassify actioned rows as missing Adj. and splice a duplicate column.
+  const adjLike = cols[1] === '' || cols[1] === '—' || cols[1].match(/^[\d.]+(?:\/5)?$/);
+  const hasAdj = adjLike && cols.length >= 7;
 
   const currentAdj = hasAdj ? cols[1] : '';
   const newAdj = `${evalData.score}`;
