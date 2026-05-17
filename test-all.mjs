@@ -134,6 +134,81 @@ for (const t of urlTests) {
   }
 }
 
+// ── 3b. ACTIONED-ROW hasAdj DETECTION (regression) ──────────────
+//
+// Actioned rows are 7 cols when formatted with an Adj. column
+// (Score | Adj. | Company | Role | Status | Link | Added). A prior bug in
+// reconcile-scores.mjs used `cols.length >= 8` for hasAdj detection, which
+// misclassified those rows as missing Adj. and spliced a duplicate column on
+// every run. score-and-publish.mjs uses the correct `>= 7` threshold.
+//
+// These checks prevent the regression in two ways:
+//   (a) Source-pattern: both files must keep the `>= 7` threshold.
+//   (b) Simulation: exercises the same detection logic against fixture rows
+//       that mirror the real Obsidian table formats.
+
+console.log('\n3b. Actioned-row hasAdj detection');
+
+const reconcileSrc = readFile('reconcile-scores.mjs');
+const scorePublishSrc = readFile('score-and-publish.mjs');
+
+if (/cols\.length\s*>=\s*7/.test(reconcileSrc) && !/cols\.length\s*>=\s*8/.test(reconcileSrc)) {
+  pass('reconcile-scores.mjs hasAdj threshold is >= 7 (actioned-row safe)');
+} else {
+  fail('reconcile-scores.mjs uses wrong hasAdj threshold — actioned rows will get duplicate Adj. column');
+}
+
+if (/cols\.length\s*>=\s*7/.test(scorePublishSrc)) {
+  pass('score-and-publish.mjs hasAdj threshold is >= 7 (actioned-row safe)');
+} else {
+  fail('score-and-publish.mjs hasAdj threshold has drifted — actioned-row detection may be broken');
+}
+
+// Logic simulation — both scripts must agree on what counts as having an Adj.
+// column. This MUST stay in sync with reconcile-scores.mjs and score-and-publish.mjs.
+function hasAdjColumn(cols) {
+  const adjLike = cols[1] === '' || cols[1] === '—' || /^[\d.]+(?:\/5)?$/.test(cols[1]);
+  return adjLike && cols.length >= 7;
+}
+
+// Fixtures focus on rows where hasAdj MUST be true (because the value is
+// non-blank and would be misread). Blank-Adj rows fail filter(Boolean) and
+// drop to hasAdj=false, but the splice path then correctly fills them in
+// without creating duplicates — that's safe, not a bug.
+const adjFixtures = [
+  // [description, table-line, expected-hasAdj]
+  [
+    'Actioned row with non-blank Adj. (7 cols) — the original bug case',
+    '| 4.4 | 2.8 | Schneider Electric | Director, AI Ops | 🟢 Live | [View](https://example.com/x) | — |',
+    true,
+  ],
+  [
+    'Full row with non-blank Adj. + Liveness (10 cols)',
+    '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 🟢 Live | 2026-05-17 |',
+    true,
+  ],
+  [
+    'Full row with non-blank Adj. (9 cols)',
+    '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 2026-05-17 |',
+    true,
+  ],
+  [
+    'Legacy row, no Adj. column (Company in col[1])',
+    '| 4.4 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 2026-05-17 |',
+    false,
+  ],
+];
+
+for (const [name, line, expected] of adjFixtures) {
+  const cols = line.split('|').map(c => c.trim()).filter(Boolean);
+  const got = hasAdjColumn(cols);
+  if (got === expected) {
+    pass(`hasAdj fixture: ${name}`);
+  } else {
+    fail(`hasAdj fixture: ${name} — got ${got}, expected ${expected}`);
+  }
+}
+
 // ── 4. LIVENESS CLASSIFICATION ──────────────────────────────────
 
 console.log('\n4. Liveness classification');
