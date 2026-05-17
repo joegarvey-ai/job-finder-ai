@@ -2,8 +2,6 @@
 
 > A fork of [santifer/career-ops](https://github.com/santifer/career-ops) — turnkey AI job search for non-technical users in any career field.
 
-[English](README.md) | [Español](README.es.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [简体中文](README.cn.md) | [繁體中文](README.zh-TW.md)
-
 <p align="center">
   <a href="https://github.com/joegarvey-ai/job-finder-ai"><img src="docs/hero-banner.jpg" alt="Job Finder AI — AI-powered job search for any career field" width="800"></a>
 </p>

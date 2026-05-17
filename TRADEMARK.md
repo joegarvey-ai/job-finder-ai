@@ -1,5 +1,12 @@
 # career-ops Trademark Policy
 
+> **Note for fork users.** This file describes the upstream
+> [santifer/career-ops](https://github.com/santifer/career-ops) project's
+> trademark policy. The **Job Finder AI** fork retains it for upstream
+> attribution and accuracy, but makes no trademark claim of its own — the
+> fork is MIT-licensed code only. Trademark questions about "career-ops"
+> belong to Santiago Fernández de Valderrama, not the fork maintainer.
+
 This document explains how the "career-ops" name and brand may be used.
 It complements — not replaces — the MIT [LICENSE](LICENSE) that governs
 the source code.
