@@ -277,12 +277,16 @@ export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' })
     }
   }
 
-  // SPA shell detection: strip scripts/styles/tags. If almost nothing is
-  // visible, the content is JS-rendered and HTTP can't verify — return
-  // unknown rather than a misleading "live".
+  // SPA shell detection: strip <script>/<style> blocks and tags so the
+  // visible-text length heuristic isn't inflated by code or CSS. visibleText
+  // is only used for `.length` below — never rendered, echoed, or persisted
+  // as HTML — so this is not an HTML sanitizer. The closing-tag patterns are
+  // intentionally tolerant of trailing whitespace and attributes (e.g.
+  // `</script >`, `</script foo>`) so a malformed close can't leave the
+  // block's contents counted as visible text.
   const visibleText = body
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

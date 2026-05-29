@@ -494,6 +494,20 @@ try {
   } else {
     fail(`classifyHttpLiveness: SPA shell should be unknown; got ${spaRes.result}`);
   }
+
+  // CodeQL hardening: a closing </script > with trailing whitespace (or
+  // attrs) must still be recognized as part of the script block, otherwise
+  // the script CONTENTS leak into the visible-text length heuristic and a
+  // SPA shell falsely scores "live". The script body here is >200 chars on
+  // its own; only ~3 chars of real content ("Hi.") sit outside.
+  const trailingSpaceClose =
+    '<html><body><script>' + 'console.log(1); '.repeat(20) + '</script >Hi.</body></html>';
+  const ts = classifyHttpLiveness({ url: 'https://acme.com/jobs/2', status: 200, body: trailingSpaceClose });
+  if (ts.result === 'unknown') {
+    pass('classifyHttpLiveness: </script > (trailing whitespace) is stripped — script content does NOT inflate visible-text');
+  } else {
+    fail(`classifyHttpLiveness: trailing-whitespace </script > should yield unknown; got ${ts.result}`);
+  }
 } catch (e) {
   fail(`Liveness HTTP tests crashed: ${e.message}`);
 }
