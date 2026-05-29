@@ -14,6 +14,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { splitTableRow } from './obsidian-table.mjs';
 
 // Optional dotenv
 try {
@@ -125,7 +126,10 @@ const updatedLines = lines.map(line => {
 
   matchedCount++;
   const evalData = evalScores.get(url);
-  const cols = line.split('|').map(c => c.trim()).filter(Boolean);
+  // Preserve interior empty cells (blank Adj.) — splitting with filter(Boolean)
+  // dropped them, which shifted columns and spliced a duplicate Adj. on rows
+  // whose Adj. was blank. See obsidian-table.mjs.
+  const cols = splitTableRow(line);
 
   // Determine if this row already has an Adj. column (2nd col is empty, score-like, or '—').
   // Threshold is >=7 because actioned rows are 7 cols when formatted with Adj.

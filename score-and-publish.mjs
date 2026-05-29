@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import yaml from 'js-yaml';
 import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
+import { parseTableRow } from './obsidian-table.mjs';
 
 // Optional dotenv (so OBSIDIAN_VAULT_PATH can live in .env)
 try {
@@ -238,133 +239,13 @@ function parseObsidianTable() {
   const content = readFileSync(OBSIDIAN_FILE, 'utf8');
   const existing = new Map(); // keyed by URL
 
+  // Row column-splitting + format detection lives in obsidian-table.mjs so that
+  // score-and-publish.mjs and reconcile-scores.mjs can't drift. The parser
+  // preserves interior empty cells (a blank Adj. or Liveness no longer shifts
+  // every later field left by one). See obsidian-table.mjs for the shapes.
   for (const line of content.split('\n')) {
-    // Extract URL from any table row containing [View](URL)
-    // Match [View](URL) requiring `)` followed by table cell delimiter `|`,
-    // so URLs containing literal parens (ZipRecruiter `(USA)`,
-    // `(Business-Cards-&-Payments)`, etc.) aren't truncated at the first inner `)`.
-    const urlMatch = line.match(/\[View\]\((.*?)\)\s*\|/);
-    if (!urlMatch || !line.startsWith('|')) continue;
-
-    const url = urlMatch[1].trim();
-    const cols = line.split('|').map(c => c.trim()).filter(Boolean);
-    if (cols.length < 5) continue;
-
-    // Detect format by column count:
-    //   9 cols: Score | Adj. | Company | Role | Level | Domain | Link | Status | Added
-    //   8 cols: Score | Adj. | Company | Role | Level | Domain | Link | Added (no status — collapsed)
-    //        OR Score | Company | Role | Level | Domain | Link | Status | Added (legacy, no Adj.)
-    //   7 cols: Score | Company | Role | Level | Domain | Link | Added (legacy collapsed)
-    //   6 cols: Score | Company | Role | Status | Link | Added (actioned section)
-    let adj = '';
-    let status = '🔲 New';
-    let added = '';
-    let company, role, level, domain;
-
-    // Determine if this row has the Adj. column by checking if col[1] looks like
-    // a score (number with optional /5) or is empty (blank adj).
-    // Works for both full rows (9 cols) and actioned rows (7 cols with Adj.)
-    const adjLike = cols[1] === '' || cols[1] === '—' || cols[1].match(/^[\d.]+(?:\/5)?$/);
-    const hasAdj = adjLike && cols.length >= 7;
-
-    if (hasAdj && cols.length >= 10) {
-      // Full + Liveness: Score | Adj. | Company | Role | Level | Domain | Link | Status | Liveness | Added
-      adj = cols[1] || '';
-      company = cols[2] || '';
-      role = cols[3] || '';
-      level = cols[4] || '';
-      domain = cols[5] || '';
-      status = cols[7] || '🔲 New';
-      added = cols[9] || '';
-    } else if (hasAdj && cols.length === 9) {
-      // Full new format: Score | Adj. | Company | Role | Level | Domain | Link | Status | Added
-      adj = cols[1] || '';
-      company = cols[2] || '';
-      role = cols[3] || '';
-      level = cols[4] || '';
-      domain = cols[5] || '';
-      status = cols[7] || '🔲 New';
-      added = cols[8] || '';
-    } else if (hasAdj && cols.length === 8) {
-      // Two possible 8-col shapes, disambiguated by Link column position:
-      //   A) Actioned + Liveness: Score | Adj. | Company | Role | Status | Link | Liveness | Added
-      //   B) Collapsed new:       Score | Adj. | Company | Role | Level | Domain | Link | Added
-      const linkIdx = cols.findIndex((c) => c.includes('[View]'));
-      if (linkIdx === 5) {
-        // Shape A
-        adj = cols[1] || '';
-        company = cols[2] || '';
-        role = cols[3] || '';
-        level = '';
-        domain = '';
-        status = cols[4] || '';
-        added = cols[7] || '';
-      } else {
-        // Shape B
-        adj = cols[1] || '';
-        company = cols[2] || '';
-        role = cols[3] || '';
-        level = cols[4] || '';
-        domain = cols[5] || '';
-        if (cols[7].match(/^\d{4}-\d{2}-\d{2}/)) {
-          added = cols[7];
-        } else {
-          status = cols[7];
-        }
-      }
-    } else if (hasAdj && cols.length === 7) {
-      // Actioned new format: Score | Adj. | Company | Role | Status | Link | Added
-      adj = cols[1] || '';
-      company = cols[2] || '';
-      role = cols[3] || '';
-      level = '';
-      domain = '';
-      status = cols[4] || '';
-      added = cols[6] || '';
-    } else if (cols.length >= 8) {
-      // Legacy full: Score | Company | Role | Level | Domain | Link | Status | Added
-      company = cols[1] || '';
-      role = cols[2] || '';
-      level = cols[3] || '';
-      domain = cols[4] || '';
-      status = cols[6] || '🔲 New';
-      added = cols[7] || '';
-    } else if (cols.length === 7) {
-      // Legacy collapsed: Score | Company | Role | Level | Domain | Link | Added
-      company = cols[1] || '';
-      role = cols[2] || '';
-      level = cols[3] || '';
-      domain = cols[4] || '';
-      if (cols[6].match(/^\d{4}-\d{2}-\d{2}/)) {
-        added = cols[6];
-      } else {
-        status = cols[6];
-      }
-    } else if (cols.length === 6) {
-      // Legacy actioned: Score | Company | Role | Status | Link | Added
-      company = cols[1] || '';
-      role = cols[2] || '';
-      level = '';
-      domain = '';
-      status = cols[3] || '';
-      added = cols[5] || '';
-    }
-
-    // Clean status — strip any [View](...) remnants from column parsing
-    status = status.replace(/\[View\].*/, '').trim() || '🔲 New';
-    added = added.replace(/\[View\].*/, '').trim();
-
-    existing.set(url, {
-      score: cols[0] || '',
-      adj,
-      company,
-      role,
-      level,
-      domain,
-      url,
-      status,
-      added,
-    });
+    const row = parseTableRow(line);
+    if (row) existing.set(row.url, row);
   }
   return existing;
 }

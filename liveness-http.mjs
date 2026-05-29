@@ -45,6 +45,44 @@ const DEAD_SIGNALS = [
   'this role has been filled',
 ];
 
+// Job aggregators / re-posters serve a full, healthy-looking 200 page even
+// after the underlying role is gone, and they rarely emit a DEAD_SIGNALS
+// phrase. So an HTTP 200 on one of these CANNOT confirm the posting is still
+// open — we must not assert a bare "live" for them. We still trust the dead
+// checks (a 404/410 or removal phrase on an aggregator is still authoritative);
+// we only refuse to green-light an unverifiable 200, returning "unknown"
+// instead. (A false "unknown" is acceptable; a false "live" is not.)
+const AGGREGATOR_DOMAINS = new Set([
+  'bebee.com',
+  'jobilize.com',
+  'theladders.com',
+  'ziprecruiter.com',
+  'whatjobs.com',
+  'jooble.org',
+  'lensa.com',
+  'learn4good.com',
+  'simplyhired.com',
+  'talent.com',
+  'sonicjobs.com',
+  'disabledperson.com',
+  'jobleads.com',
+  'virtualvocations.com',
+]);
+
+function isAggregatorUrl(input) {
+  let host;
+  try {
+    host = new URL(input).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  host = host.replace(/^www\./, '');
+  for (const domain of AGGREGATOR_DOMAINS) {
+    if (host === domain || host.endsWith(`.${domain}`)) return true;
+  }
+  return false;
+}
+
 // A redirect that lands on one of these path shapes is almost always
 // "role removed, bounced to generic careers landing."
 const GENERIC_CAREERS_PATHS = [
@@ -209,58 +247,80 @@ function extractPostingAgeDays(body) {
   return null;
 }
 
+// Pure classifier — given an HTTP result, decide live/stale/unknown. Kept
+// separate from the fetch so the decision logic is unit-testable without a
+// network (mirrors classifyLiveness in liveness-core.mjs). Ordering matters:
+// the authoritative DEAD checks (status, generic redirect, removal phrases)
+// run first and apply even to aggregator URLs; the aggregator guard only
+// intercepts an otherwise-"live" 200.
+export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' }) {
+  if (status === 404 || status === 410) {
+    return { result: 'stale', reason: `HTTP ${status}`, ageDays: null };
+  }
+
+  if (isGenericCareersRedirect(url, finalUrl)) {
+    return { result: 'stale', reason: 'redirect to generic careers page', ageDays: null };
+  }
+
+  if (status < 200 || status >= 400) {
+    return { result: 'unknown', reason: `HTTP ${status}`, ageDays: null };
+  }
+
+  const bodyLower = body.toLowerCase();
+  for (const signal of DEAD_SIGNALS) {
+    if (bodyLower.includes(signal)) {
+      return {
+        result: 'stale',
+        reason: `body signal: "${signal}"`,
+        ageDays: extractPostingAgeDays(body),
+      };
+    }
+  }
+
+  // SPA shell detection: strip scripts/styles/tags. If almost nothing is
+  // visible, the content is JS-rendered and HTTP can't verify — return
+  // unknown rather than a misleading "live".
+  const visibleText = body
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (visibleText.length < MIN_VISIBLE_TEXT_CHARS) {
+    return {
+      result: 'unknown',
+      reason: `SPA shell — ${visibleText.length} chars of visible text (JS-rendered)`,
+      ageDays: null,
+    };
+  }
+
+  // Aggregator guard: a healthy 200 here is not proof the role is open. We've
+  // already honored the dead checks above, so this never hides a confirmed
+  // dead listing — it only declines to assert "live" for an unverifiable one.
+  if (isAggregatorUrl(finalUrl) || isAggregatorUrl(url)) {
+    return {
+      result: 'unknown',
+      reason: 'aggregator domain — HTTP 200 cannot confirm not-dead',
+      ageDays: extractPostingAgeDays(body),
+    };
+  }
+
+  return {
+    result: 'live',
+    reason: `HTTP ${status}`,
+    ageDays: extractPostingAgeDays(body),
+  };
+}
+
 async function checkOne(url) {
   try {
     const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS);
     const status = res.status;
     const finalUrl = res.url || url;
-
-    if (status === 404 || status === 410) {
-      return { result: 'stale', reason: `HTTP ${status}`, ageDays: null };
-    }
-
-    if (isGenericCareersRedirect(url, finalUrl)) {
-      return { result: 'stale', reason: 'redirect to generic careers page', ageDays: null };
-    }
-
-    if (status < 200 || status >= 400) {
-      return { result: 'unknown', reason: `HTTP ${status}`, ageDays: null };
-    }
-
-    const body = await readBodyCapped(res);
-    const bodyLower = body.toLowerCase();
-    for (const signal of DEAD_SIGNALS) {
-      if (bodyLower.includes(signal)) {
-        return {
-          result: 'stale',
-          reason: `body signal: "${signal}"`,
-          ageDays: extractPostingAgeDays(body),
-        };
-      }
-    }
-
-    // SPA shell detection: strip scripts/styles/tags. If almost nothing is
-    // visible, the content is JS-rendered and HTTP can't verify — return
-    // unknown rather than a misleading "live".
-    const visibleText = body
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (visibleText.length < MIN_VISIBLE_TEXT_CHARS) {
-      return {
-        result: 'unknown',
-        reason: `SPA shell — ${visibleText.length} chars of visible text (JS-rendered)`,
-        ageDays: null,
-      };
-    }
-
-    return {
-      result: 'live',
-      reason: `HTTP ${status}`,
-      ageDays: extractPostingAgeDays(body),
-    };
+    // Only read the body for statuses where it informs the decision. 4xx/5xx
+    // short-circuit in the classifier without needing it.
+    const body = status >= 200 && status < 400 ? await readBodyCapped(res) : '';
+    return classifyHttpLiveness({ url, status, finalUrl, body });
   } catch (err) {
     const msg = (err && err.message) ? err.message.split('\n')[0] : String(err);
     return { result: 'unknown', reason: `fetch error: ${msg}`, ageDays: null };
@@ -314,17 +374,27 @@ export async function checkLiveness(urls, { verbose = false, skipCache = false }
 }
 
 export function formatLivenessCell(entry) {
-  // Always return a non-empty string so Markdown column counts stay stable
-  // (parseObsidianTable strips empty cells via filter(Boolean)).
+  // Returns a non-empty string for known results so the cell is never blank
+  // in the published table.
   if (!entry) return '—';
   const base =
     entry.result === 'live' ? '🟢 Live' :
     entry.result === 'stale' ? '💀 Stale' :
     entry.result === 'unknown' ? '❓ Unknown' : '—';
+  if (base === '—') return base;
+
+  let cell = base;
   if (entry.ageDays != null && entry.ageDays >= STALE_POSTING_AGE_DAYS && entry.result !== 'stale') {
-    return `${base} ⚠️ ${entry.ageDays}d`;
+    cell = `${base} ⚠️ ${entry.ageDays}d`;
   }
-  return base;
+  // Verified-as-of date: when the reader opens the tracker, every checked row
+  // shows the date it was last verified. Appended only when we actually have a
+  // check timestamp, e.g. "🟢 Live (2026-05-25)".
+  if (entry.checkedAt) {
+    const asOf = new Date(entry.checkedAt).toISOString().slice(0, 10);
+    cell = `${cell} (${asOf})`;
+  }
+  return cell;
 }
 
 function iconFor(result) {
@@ -333,8 +403,11 @@ function iconFor(result) {
 
 export const _internals = {
   DEAD_SIGNALS,
+  AGGREGATOR_DOMAINS,
+  isAggregatorUrl,
   isGenericCareersRedirect,
   extractPostingAgeDays,
+  classifyHttpLiveness,
   CACHE_TTL_MS,
   STALE_POSTING_AGE_DAYS,
 };
