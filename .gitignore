@@ -1,5 +1,9 @@
 # Personal data (user fills these)
 cv.md
+# Blanket-ignore data/ and reports/ for shareability — anything generated
+# (logs, digests, scan output, parser-output cache) stays out of the repo.
+# Upstream's data/parser-output/ for the local-parser provider is created
+# at runtime by the provider, so no .gitkeep is needed here.
 data/
 !data/.gitkeep
 reports/

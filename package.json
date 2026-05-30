@@ -23,6 +23,7 @@
     "scan:lever": "node scan-all.mjs --source lever-agg",
     "scan:remote": "node scan-all.mjs --source remote-boards",
     "discover-slugs": "node discover-ats-slugs.mjs",
+    "patterns": "node analyze-patterns.mjs",
     "gemini:eval": "node gemini-eval.mjs",
     "evals": "node evals/run-evals.mjs"
   },
@@ -31,6 +32,8 @@
     "job-search",
     "claude-code",
     "career",
+    "career-ops",
+    "careerops",
     "automation"
   ],
   "author": "Santiago Fernández de Valderrama <hi@santifer.io> (https://santifer.io)",
