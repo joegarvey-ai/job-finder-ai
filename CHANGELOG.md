@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.1](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.0...career-ops-v1.9.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* **liveness:** aggregator guard + verified-as-of date; preserve interior table cells ([3898297](https://github.com/joegarvey-ai/job-finder-ai/commit/38982976851721fdceaf26b328665b783beb05d9))
+* **liveness:** aggregator guard + verified-as-of date; preserve interior table cells ([ca3af00](https://github.com/joegarvey-ai/job-finder-ai/commit/ca3af00990263130d41efe7dfe76337770775e44))
+* **liveness:** tolerate whitespace/attrs in &lt;/script&gt;/&lt;/style&gt; close tags ([ac7e3a2](https://github.com/joegarvey-ai/job-finder-ai/commit/ac7e3a2aa46b1c99b88c94cab3b8b16134020f81))
+
 ## [1.9.0](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.8.0...career-ops-v1.9.0) (2026-05-17)
 
 
