@@ -247,6 +247,64 @@ function extractPostingAgeDays(body) {
   return null;
 }
 
+// Count visible chars in a response body, skipping <script>/<style> blocks
+// and HTML tags, with whitespace runs collapsed to a single space (matching
+// the original `.replace(/\s+/g, ' ').trim().length` semantics). Used by
+// SPA-shell detection — we only need the count, never the stripped string.
+//
+// Walking the body avoids regex-replace patterns that static analyzers
+// (CodeQL `js/incomplete-multi-character-sanitization`) flag as incomplete
+// HTML sanitizers, even though nothing here is rendered/echoed/persisted as
+// HTML. Over-skipping (e.g. accepting a tolerant `</script foo>` close) is
+// the safe direction for this heuristic: it can only INCREASE the chance of
+// classifying a thin page as "unknown" (correct), never as a false "live".
+function spaShellVisibleLength(body) {
+  const len = body.length;
+  const lower = body.toLowerCase();
+  const isWordChar = (ch) =>
+    (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+  const startsBlock = (i, name) => {
+    if (!lower.startsWith('<' + name, i)) return false;
+    const after = lower[i + name.length + 1];
+    return after === undefined || !isWordChar(after);
+  };
+  let i = 0;
+  let count = 0;
+  let pendingSpace = false;
+  while (i < len) {
+    const c = body[i];
+    if (c === '<') {
+      let blockName = null;
+      if (startsBlock(i, 'script')) blockName = 'script';
+      else if (startsBlock(i, 'style')) blockName = 'style';
+      if (blockName !== null) {
+        const openEnd = body.indexOf('>', i + 1);
+        if (openEnd === -1) break;
+        const closeStart = lower.indexOf('</' + blockName, openEnd + 1);
+        if (closeStart === -1) break;
+        const closeEnd = body.indexOf('>', closeStart);
+        if (closeEnd === -1) break;
+        i = closeEnd + 1;
+        continue;
+      }
+      const tagEnd = body.indexOf('>', i + 1);
+      if (tagEnd === -1) break;
+      i = tagEnd + 1;
+      continue;
+    }
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v') {
+      pendingSpace = true;
+      i++;
+      continue;
+    }
+    if (pendingSpace && count > 0) count++;
+    pendingSpace = false;
+    count++;
+    i++;
+  }
+  return count;
+}
+
 // Pure classifier — given an HTTP result, decide live/stale/unknown. Kept
 // separate from the fetch so the decision logic is unit-testable without a
 // network (mirrors classifyLiveness in liveness-core.mjs). Ordering matters:
@@ -277,23 +335,13 @@ export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' })
     }
   }
 
-  // SPA shell detection: strip <script>/<style> blocks and tags so the
-  // visible-text length heuristic isn't inflated by code or CSS. visibleText
-  // is only used for `.length` below — never rendered, echoed, or persisted
-  // as HTML — so this is not an HTML sanitizer. The closing-tag patterns are
-  // intentionally tolerant of trailing whitespace and attributes (e.g.
-  // `</script >`, `</script foo>`) so a malformed close can't leave the
-  // block's contents counted as visible text.
-  const visibleText = body
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (visibleText.length < MIN_VISIBLE_TEXT_CHARS) {
+  // SPA shell detection — see spaShellVisibleLength() above for why this is
+  // a character walk rather than a regex strip-then-measure.
+  const visibleTextLength = spaShellVisibleLength(body);
+  if (visibleTextLength < MIN_VISIBLE_TEXT_CHARS) {
     return {
       result: 'unknown',
-      reason: `SPA shell — ${visibleText.length} chars of visible text (JS-rendered)`,
+      reason: `SPA shell — ${visibleTextLength} chars of visible text (JS-rendered)`,
       ageDays: null,
     };
   }
