@@ -134,22 +134,30 @@ for (const t of urlTests) {
   }
 }
 
-// ── 3b. ACTIONED-ROW hasAdj DETECTION (regression) ──────────────
+// ── 3b. OBSIDIAN TABLE PARSING (regression) ─────────────────────
 //
-// Actioned rows are 7 cols when formatted with an Adj. column
-// (Score | Adj. | Company | Role | Status | Link | Added). A prior bug in
-// reconcile-scores.mjs used `cols.length >= 8` for hasAdj detection, which
-// misclassified those rows as missing Adj. and spliced a duplicate column on
-// every run. score-and-publish.mjs uses the correct `>= 7` threshold.
+// Row column-splitting + format detection lives in obsidian-table.mjs, shared
+// by reconcile-scores.mjs and score-and-publish.mjs.
 //
-// These checks prevent the regression in two ways:
-//   (a) Source-pattern: both files must keep the `>= 7` threshold.
-//   (b) Simulation: exercises the same detection logic against fixture rows
-//       that mirror the real Obsidian table formats.
+// Two historical bugs are guarded here:
+//   (1) Actioned rows are 7 cols with an Adj. column
+//       (Score | Adj. | Company | Role | Status | Link | Added). A `>= 8`
+//       threshold misclassified them as missing Adj. and spliced a duplicate.
+//       The correct threshold is `>= 7`.
+//   (2) Splitting a row with `.split('|').map(trim).filter(Boolean)` dropped
+//       INTERIOR empty cells too, so a blank Adj. (or blank Liveness) collapsed
+//       the row by a column and shifted every later field left — Liveness
+//       landed in Added, Adj. was lost, and the row was misread as a legacy
+//       no-Adj format. splitTableRow preserves interior empties.
 
-console.log('\n3b. Actioned-row hasAdj detection');
+console.log('\n3b. Obsidian table parsing');
+
+const { splitTableRow, parseTableRow } = await import(
+  pathToFileURL(join(ROOT, 'obsidian-table.mjs')).href
+);
 
 const reconcileSrc = readFile('reconcile-scores.mjs');
+const obsidianTableSrc = readFile('obsidian-table.mjs');
 const scorePublishSrc = readFile('score-and-publish.mjs');
 
 if (/cols\.length\s*>=\s*7/.test(reconcileSrc) && !/cols\.length\s*>=\s*8/.test(reconcileSrc)) {
@@ -158,23 +166,28 @@ if (/cols\.length\s*>=\s*7/.test(reconcileSrc) && !/cols\.length\s*>=\s*8/.test(
   fail('reconcile-scores.mjs uses wrong hasAdj threshold — actioned rows will get duplicate Adj. column');
 }
 
-if (/cols\.length\s*>=\s*7/.test(scorePublishSrc)) {
-  pass('score-and-publish.mjs hasAdj threshold is >= 7 (actioned-row safe)');
+if (/cols\.length\s*>=\s*7/.test(obsidianTableSrc)) {
+  pass('obsidian-table.mjs hasAdj threshold is >= 7 (actioned-row safe)');
 } else {
-  fail('score-and-publish.mjs hasAdj threshold has drifted — actioned-row detection may be broken');
+  fail('obsidian-table.mjs hasAdj threshold has drifted — actioned-row detection may be broken');
 }
 
-// Logic simulation — both scripts must agree on what counts as having an Adj.
-// column. This MUST stay in sync with reconcile-scores.mjs and score-and-publish.mjs.
+// Guard against reintroducing the column-shift bug: no table-row split may pipe
+// straight into filter(Boolean), which drops interior blank cells.
+const splitSafe = (src) => !/split\(\s*['"]\|['"]\s*\)[\s\S]{0,80}?filter\(\s*Boolean\s*\)/.test(src);
+if (splitSafe(reconcileSrc) && splitSafe(scorePublishSrc) && splitSafe(obsidianTableSrc)) {
+  pass('No filter(Boolean) row-splitting (interior blank cells preserved)');
+} else {
+  fail('filter(Boolean) row-splitting reintroduced — blank Adj./Liveness cells will shift columns');
+}
+
+// Logic simulation — what counts as having an Adj. column. MUST stay in sync
+// with parseTableRow in obsidian-table.mjs.
 function hasAdjColumn(cols) {
   const adjLike = cols[1] === '' || cols[1] === '—' || /^[\d.]+(?:\/5)?$/.test(cols[1]);
   return adjLike && cols.length >= 7;
 }
 
-// Fixtures focus on rows where hasAdj MUST be true (because the value is
-// non-blank and would be misread). Blank-Adj rows fail filter(Boolean) and
-// drop to hasAdj=false, but the splice path then correctly fills them in
-// without creating duplicates — that's safe, not a bug.
 const adjFixtures = [
   // [description, table-line, expected-hasAdj]
   [
@@ -193,6 +206,14 @@ const adjFixtures = [
     true,
   ],
   [
+    // With interior empties preserved, a blank Adj. row keeps its 10 cols and
+    // col[1] === '' is correctly recognized as the (empty) Adj. column. Under
+    // the old filter(Boolean) split this collapsed to hasAdj=false.
+    'Full row with BLANK Adj. + Liveness (10 cols) — now correctly hasAdj',
+    '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | [View](https://example.com/z) | 🔲 New | 🟢 Live (2026-05-25) | 2026-05-20 14:30 |',
+    true,
+  ],
+  [
     'Legacy row, no Adj. column (Company in col[1])',
     '| 4.4 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 2026-05-17 |',
     false,
@@ -200,13 +221,41 @@ const adjFixtures = [
 ];
 
 for (const [name, line, expected] of adjFixtures) {
-  const cols = line.split('|').map(c => c.trim()).filter(Boolean);
+  const cols = splitTableRow(line);
   const got = hasAdjColumn(cols);
   if (got === expected) {
     pass(`hasAdj fixture: ${name}`);
   } else {
     fail(`hasAdj fixture: ${name} — got ${got}, expected ${expected}`);
   }
+}
+
+// splitTableRow must keep interior empties (the core of the column-shift fix).
+const blankAdjRow = '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | [View](https://job-boards.greenhouse.io/anthropic/jobs/123) | 🔲 New | 🟢 Live (2026-05-25) | 2026-05-20 14:30 |';
+const cols10 = splitTableRow(blankAdjRow);
+if (cols10.length === 10 && cols10[1] === '') {
+  pass('splitTableRow preserves interior blank Adj. cell (10 cols, col[1] empty)');
+} else {
+  fail(`splitTableRow dropped interior blank: length=${cols10.length}, col[1]="${cols10[1]}"`);
+}
+
+// Core regression: blank Adj. + populated Liveness survives parse → write →
+// parse with Added intact, Adj. still blank, Status correct, and no shift.
+const p1 = parseTableRow(blankAdjRow);
+const liveness = '🟢 Live (2026-05-25)';
+const reserialize = (r) =>
+  `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.status} | ${liveness} | ${r.added} |`;
+const p2 = p1 ? parseTableRow(reserialize(p1)) : null;
+
+const okFirst = p1 && p1.adj === '' && p1.added === '2026-05-20 14:30' &&
+  p1.status === '🔲 New' && p1.score === '4.0 🏆 T1' && p1.company === 'Anthropic' &&
+  p1.url === 'https://job-boards.greenhouse.io/anthropic/jobs/123';
+const stable = p2 && p2.adj === p1.adj && p2.added === p1.added && p2.status === p1.status &&
+  p2.company === p1.company && p2.url === p1.url && p2.role === p1.role;
+if (okFirst && stable) {
+  pass('Blank-Adj + Liveness row survives parse→write→parse (no column shift)');
+} else {
+  fail(`Blank-Adj round-trip broke: p1=${JSON.stringify(p1)} p2=${JSON.stringify(p2)}`);
 }
 
 // ── 4. LIVENESS CLASSIFICATION ──────────────────────────────────
@@ -272,7 +321,7 @@ try {
   const { _internals, formatLivenessCell } = await import(
     pathToFileURL(join(ROOT, 'liveness-http.mjs')).href
   );
-  const { isGenericCareersRedirect, extractPostingAgeDays } = _internals;
+  const { isGenericCareersRedirect, extractPostingAgeDays, classifyHttpLiveness, isAggregatorUrl } = _internals;
 
   // ---- isGenericCareersRedirect ----
 
@@ -373,6 +422,91 @@ try {
     pass('Unknown entry formats correctly');
   } else {
     fail('Unknown entry should format as Unknown');
+  }
+
+  // ---- formatLivenessCell verified-as-of date ----
+  // Date is appended only when checkedAt is present (production entries always
+  // carry it); the bare-label tests above pass entries without it.
+  const dated = formatLivenessCell({ result: 'live', ageDays: 5, checkedAt: Date.parse('2026-05-25T10:00:00Z') });
+  if (dated === '🟢 Live (2026-05-25)') {
+    pass('Live entry stamps verified-as-of date when checkedAt present');
+  } else {
+    fail(`Live entry should stamp date; got "${dated}"`);
+  }
+
+  if (formatLivenessCell({ result: 'unknown', checkedAt: Date.parse('2026-05-25T10:00:00Z') }) === '❓ Unknown (2026-05-25)') {
+    pass('Unknown entry stamps verified-as-of date when checkedAt present');
+  } else {
+    fail('Unknown entry should stamp verified-as-of date');
+  }
+
+  // ---- isAggregatorUrl ----
+  if (isAggregatorUrl('https://www.ziprecruiter.com/c/x/Job/y') &&
+      isAggregatorUrl('https://sub.talent.com/job/1') &&
+      !isAggregatorUrl('https://job-boards.greenhouse.io/acme/jobs/1')) {
+    pass('isAggregatorUrl matches aggregator hosts (www + subdomain), not ATS boards');
+  } else {
+    fail('isAggregatorUrl misclassified a host');
+  }
+
+  // ---- classifyHttpLiveness (pure HTTP-result classifier) ----
+  // Long, content-rich body so the SPA-shell guard (200-char floor) passes.
+  const jobBody = '<html><body><h1>Head of Product</h1><p>' +
+    'We are hiring a Head of Product to own strategy and roadmap across the platform. '.repeat(6) +
+    '<a href="/apply">Apply now</a></p></body></html>';
+
+  if (classifyHttpLiveness({ url: 'https://boards.greenhouse.io/acme/jobs/1', status: 410 }).result === 'stale') {
+    pass('classifyHttpLiveness: 410 on ATS URL → stale');
+  } else {
+    fail('classifyHttpLiveness: 410 should be stale');
+  }
+
+  if (classifyHttpLiveness({ url: 'https://job-boards.greenhouse.io/acme/jobs/1', status: 404 }).result === 'stale') {
+    pass('classifyHttpLiveness: 404 → stale');
+  } else {
+    fail('classifyHttpLiveness: 404 should be stale');
+  }
+
+  const liveRes = classifyHttpLiveness({ url: 'https://job-boards.greenhouse.io/acme/jobs/1', status: 200, body: jobBody });
+  if (liveRes.result === 'live') {
+    pass('classifyHttpLiveness: confirmed company-page 200 with job content → live');
+  } else {
+    fail(`classifyHttpLiveness: ATS 200 should be live; got ${liveRes.result}`);
+  }
+
+  const aggRes = classifyHttpLiveness({ url: 'https://www.ziprecruiter.com/jobs/abc', status: 200, body: jobBody });
+  if (aggRes.result === 'unknown') {
+    pass('classifyHttpLiveness: aggregator 200 → unknown (never asserts live from HTTP)');
+  } else {
+    fail(`classifyHttpLiveness: aggregator 200 should be unknown; got ${aggRes.result}`);
+  }
+
+  const aggDead = classifyHttpLiveness({ url: 'https://www.bebee.com/job/xyz', status: 200, body: 'This position is no longer available. ' + jobBody });
+  if (aggDead.result === 'stale') {
+    pass('classifyHttpLiveness: aggregator + dead signal → stale (dead checks still authoritative)');
+  } else {
+    fail(`classifyHttpLiveness: aggregator + dead signal should be stale; got ${aggDead.result}`);
+  }
+
+  const spaRes = classifyHttpLiveness({ url: 'https://acme.com/jobs/1', status: 200, body: '<html><body><div id="root"></div><script>app()</script></body></html>' });
+  if (spaRes.result === 'unknown') {
+    pass('classifyHttpLiveness: SPA shell (no visible text) → unknown');
+  } else {
+    fail(`classifyHttpLiveness: SPA shell should be unknown; got ${spaRes.result}`);
+  }
+
+  // CodeQL hardening: a closing </script > with trailing whitespace (or
+  // attrs) must still be recognized as part of the script block, otherwise
+  // the script CONTENTS leak into the visible-text length heuristic and a
+  // SPA shell falsely scores "live". The script body here is >200 chars on
+  // its own; only ~3 chars of real content ("Hi.") sit outside.
+  const trailingSpaceClose =
+    '<html><body><script>' + 'console.log(1); '.repeat(20) + '</script >Hi.</body></html>';
+  const ts = classifyHttpLiveness({ url: 'https://acme.com/jobs/2', status: 200, body: trailingSpaceClose });
+  if (ts.result === 'unknown') {
+    pass('classifyHttpLiveness: </script > (trailing whitespace) is stripped — script content does NOT inflate visible-text');
+  } else {
+    fail(`classifyHttpLiveness: trailing-whitespace </script > should yield unknown; got ${ts.result}`);
   }
 } catch (e) {
   fail(`Liveness HTTP tests crashed: ${e.message}`);

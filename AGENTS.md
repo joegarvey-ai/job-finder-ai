@@ -68,9 +68,10 @@ AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluat
 | `scan-all.mjs` | Fork-only: Node.js scrapers for Greenhouse/Lever/JSearch/Wellfound/remote boards (`npm run scan-all`) |
 | `check-liveness.mjs` | Job posting liveness checker |
 | `liveness-core.mjs` | Shared liveness logic (expired signals win over generic Apply text) |
-| `liveness-http.mjs` | Fork-only: HTTP-based liveness checking with auto-stale detection |
+| `liveness-http.mjs` | Fork-only: HTTP-based liveness checking. Confident dead-detection (404/410, removal phrases, generic-careers redirect → auto-stale); aggregator-domain guard (never asserts "live" for an unverifiable 200 — returns "unknown"); each published Liveness cell carries a verified-as-of date, e.g. `🟢 Live (2026-05-25)` |
 | `score-and-publish.mjs` | Fork-only: surface scoring + Obsidian scanner publishing (`--reconcile` to feed eval scores back) |
 | `reconcile-scores.mjs` | Fork-only: extract eval scores from `reports/` and write `Adj.` column to scanner (`--dry-run`, `--json`) |
+| `obsidian-table.mjs` | Fork-only: shared parser for the Obsidian scanner table (used by `score-and-publish.mjs` + `reconcile-scores.mjs`). Preserves interior empty cells so a blank `Adj.`/`Liveness` can't shift columns on re-read |
 | `context/` | Fork-only: canonical files synced from Obsidian (resume source of truth, style guide, accomplishments, metrics) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy). Header includes `**Legitimacy:** {tier}`. |
 
