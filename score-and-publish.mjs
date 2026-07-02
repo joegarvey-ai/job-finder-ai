@@ -10,7 +10,11 @@
 //   6. Reconciles evaluation scores from reports/ into Adj. column
 //   7. Writes back with Adj. + Added timestamp columns
 //
-// Table columns: Score | Adj. | Company | Role | Level | Domain | Link | Status | Added
+// Table columns: Score | Adj. | Company | Role | Level | Domain | Location | Link | Status | Liveness | Added
+//   Location = 🌐 Remote / 🏙️ Hybrid / 🏢 Onsite / 📍 Unknown, classified from the
+//   scraper location, evaluation report, role title, and URL.
+//   With geographic.remote_only: true, only Remote + allowed-metro Hybrid surface in
+//   the top sections; Unknown → "Needs location check"; other Onsite/Hybrid → collapsible.
 //
 // Usage:
 //   node score-and-publish.mjs              # Incremental + reconcile (default)
@@ -21,7 +25,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import yaml from 'js-yaml';
 import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
-import { parseTableRow } from './obsidian-table.mjs';
+import { parseTableRow, splitTableRow } from './obsidian-table.mjs';
 
 // Optional dotenv (so OBSIDIAN_VAULT_PATH can live in .env)
 try {
@@ -253,6 +257,101 @@ function computeScore(title, company) {
   };
 }
 
+// ── Geographic filtering (remote-only) ─────────────────────────────────────
+//
+// Loaded from config/profile.yml under `geographic`:
+//   remote_only: true              → main results show only Remote + allowed-metro Hybrid
+//   allowed_hybrid_metros: [...]   → metros where a Hybrid role is still commutable
+// When remote_only is false the scanner behaves exactly as before (no gating);
+// the Location column is still shown, purely informational.
+
+function loadGeographic() {
+  const profilePath = join(ROOT, 'config', 'profile.yml');
+  const fallback = { remoteOnly: false, metros: [] };
+  if (!existsSync(profilePath)) return fallback;
+  try {
+    const profile = yaml.load(readFileSync(profilePath, 'utf8')) || {};
+    const g = profile.geographic || {};
+    const metros = Array.isArray(g.allowed_hybrid_metros)
+      ? g.allowed_hybrid_metros.map((m) => String(m).toLowerCase().trim()).filter(Boolean)
+      : [];
+    return { remoteOnly: g.remote_only === true, metros };
+  } catch (err) {
+    console.warn(`Warning: could not parse geographic from profile.yml (${err.message}). Remote filter off.`);
+    return fallback;
+  }
+}
+
+const GEO = loadGeographic();
+
+// Regional phrasings that mean "Seattle metro" even without a listed city name.
+const METRO_VARIANTS = [
+  'greater seattle', 'seattle metro', 'seattle area', 'puget sound',
+  'eastside', 'south king county', 'north pierce',
+];
+
+function buildMetroMatcher(metros) {
+  const names = [...metros, ...METRO_VARIANTS].filter(Boolean);
+  const patterns = names.map(
+    (n) => new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+  );
+  return (text) => !!text && patterns.some((re) => re.test(text));
+}
+
+const inAllowedMetro = buildMetroMatcher(GEO.metros);
+
+// Pull location hints out of a job URL (aggregators encode city/remote in the path).
+function locationFromUrl(url) {
+  const out = [];
+  if (!url) return out;
+  const lower = url.toLowerCase();
+  let m = lower.match(/whatjobs\.com\/jobs\/[^/]+\/([^/?#]+)/);
+  if (m) out.push(m[1].replace(/-/g, ' '));
+  m = url.match(/\/-in-([^/?#]+)/i); // ziprecruiter: /-in-Remote,OR  /-in-Union-City,NJ
+  if (m) out.push(m[1].replace(/-/g, ' '));
+  if (/\bremote\b/.test(lower)) out.push('remote');
+  return out;
+}
+
+// Classify a role into Remote / Hybrid / Onsite / Unknown from any available raw
+// location strings (scraper location, evaluation report fields, title, URL).
+// Returns { cls, metro } where `metro` is true if the place is in the allowed set.
+function classifyLocation(rawStrings) {
+  const texts = (rawStrings || []).filter(Boolean).map((s) => String(s).toLowerCase());
+  if (!texts.length) return { cls: 'Unknown', metro: false };
+  const joined = texts.join(' | ');
+  const metro = inAllowedMetro(joined);
+  const remoteNegated = /no remote|not remote|remote not|non-remote|remote unavailable/.test(joined);
+
+  if (/\bhybrid\b/.test(joined)) return { cls: 'Hybrid', metro };
+  if ((/\bremote\b|work from home|\bwfh\b|remote-first|fully distributed|distributed team/.test(joined)) && !remoteNegated)
+    return { cls: 'Remote', metro };
+  if (/\bon-?site\b|\bin-office\b|\bin office\b|\bin-person\b|\bin person\b/.test(joined))
+    return { cls: 'Onsite', metro };
+  // A concrete place (allowed metro, a "City, ST" pair, or a known metro) with no
+  // remote/hybrid signal reads as Onsite.
+  if (metro || /,\s*[a-z]{2}\b/.test(joined) ||
+      /\b(new york|san francisco|bay area|boston|austin|chicago|washington|district of columbia|jersey city|norwalk|atlanta|denver|los angeles|london)\b/.test(joined))
+    return { cls: 'Onsite', metro };
+  return { cls: 'Unknown', metro };
+}
+
+function formatLocationCell(cls, metro) {
+  switch (cls) {
+    case 'Remote': return '🌐 Remote';
+    case 'Hybrid': return metro ? '🏙️ Hybrid (Seattle metro)' : '🏙️ Hybrid';
+    case 'Onsite': return metro ? '🏢 Onsite (Seattle metro)' : '🏢 Onsite';
+    default: return '📍 Unknown';
+  }
+}
+
+// True when a row should surface in the main (APPLY/REVIEW) results under the
+// remote-only policy: Remote anywhere, or Hybrid inside an allowed metro.
+function passesRemotePolicy(row) {
+  if (!GEO.remoteOnly) return true;
+  return row.locationClass === 'Remote' || (row.locationClass === 'Hybrid' && row.locationMetro);
+}
+
 function extractCompanyFromUrl(url) {
   const m = url.match(/weworkremotely\.com\/remote-jobs\/([a-z0-9-]+?)-(director|head|principal|senior|staff|lead|group|product|vp|associate|manager)/i);
   if (m) return m[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bUsa\b/, 'USA').replace(/\bAi\b/, 'AI');
@@ -273,9 +372,15 @@ function loadEvaluationScores() {
     const urlMatch = content.match(/^\*\*URL:\*\*\s*(.+)$/m);
     const scoreMatch = content.match(/^\*\*Score:\*\*\s*([\d.]+)\/5/m);
     if (urlMatch && scoreMatch) {
+      // Block A "Role Summary" carries free-text Location / Remote fields — pass
+      // them through as location signals (best available for evaluated roles).
+      const locMatch = content.match(/\|\s*\*\*Location\*\*\s*\|\s*(.+?)\s*\|/);
+      const remoteMatch = content.match(/\|\s*\*\*Remote\*\*\s*\|\s*(.+?)\s*\|/);
+      const locationHints = [locMatch?.[1], remoteMatch?.[1]].filter(Boolean);
       scores.set(urlMatch[1].trim(), {
         score: parseFloat(scoreMatch[1]),
         reportFile: file,
+        locationHints,
       });
     }
   }
@@ -318,13 +423,21 @@ function gatherNewRoles() {
     for (const file of filesToRead) {
       const content = readFileSync(join(dataDir, file), 'utf8');
       for (const line of content.split('\n')) {
-        const m = line.match(/^\|\s*\d+\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*\[View\]\((.*?)\)\s*\|/);
-        if (!m) continue;
-        let company = m[1].trim();
-        const title = m[2].trim();
-        const url = m[4].trim();
+        if (!line.startsWith('|') || !line.includes('[View]')) continue;
+        const cols = splitTableRow(line);
+        if (!/^\d+$/.test(cols[0] || '')) continue; // only the numbered roles table
+        const li = cols.findIndex((c) => c.includes('[View]'));
+        if (li < 3) continue;
+        const urlMatch = line.match(/\[View\]\((.*?)\)\s*\|/);
+        if (!urlMatch) continue;
+        const url = urlMatch[1].trim();
+        let company = (cols[1] || '').trim();
+        const title = (cols[2] || '').trim();
+        // New digests carry Location before Source+Link (Link at index 5); older
+        // digests (Company|Role|Source|Link) put Link at index 4 and have none.
+        const location = li >= 5 ? (cols[3] || '').trim() : '';
         if (!company && url.includes('weworkremotely.com')) company = extractCompanyFromUrl(url);
-        if (url && !roles.has(url)) roles.set(url, { company, title, url });
+        if (url && !roles.has(url)) roles.set(url, { company, title, url, location });
       }
     }
   }
@@ -453,6 +566,26 @@ for (const [url, role] of candidateRoles) {
   newCount++;
 }
 
+// ── Classify location for every row (Remote / Hybrid / Onsite / Unknown) ──
+// Best available signal wins: a prior run's Location cell, the scraper location
+// from the digest, the evaluation report's Location/Remote fields, then the role
+// title, then hints parsed from the URL. No signal at all → Unknown (never dropped).
+for (const r of finalRows) {
+  const signals = [];
+  const prevLoc = existingRows.get(r.url)?.location;
+  if (prevLoc) signals.push(prevLoc);
+  const cand = candidateRoles.get(r.url);
+  if (cand?.location) signals.push(cand.location);
+  const ev = evalScores.get(r.url);
+  if (ev?.locationHints?.length) signals.push(...ev.locationHints);
+  if (r.role) signals.push(r.role);
+  signals.push(...locationFromUrl(r.url));
+  const { cls, metro } = classifyLocation(signals);
+  r.locationClass = cls;
+  r.locationMetro = metro;
+  r.locationLabel = formatLocationCell(cls, metro);
+}
+
 // ── Liveness check: APPLY/REVIEW open rows only ──
 // Run post-scoring, pre-sort so stale rows flip to Closed and settle into the
 // Actioned section naturally. See feature spec: we burn time on dead listings
@@ -501,10 +634,26 @@ finalRows.sort((a, b) => {
 
 const openRows = finalRows.filter(r => !r._locked);
 const lockedRows = finalRows.filter(r => r._locked);
-const applyRows = openRows.filter(r => r.recommendation === '🟢 APPLY');
-const reviewRows = openRows.filter(r => r.recommendation === '🟡 REVIEW');
+const applyCand = openRows.filter(r => r.recommendation === '🟢 APPLY');
+const reviewCand = openRows.filter(r => r.recommendation === '🟡 REVIEW');
 const weakRows = openRows.filter(r => r.recommendation === '🟠 WEAK');
 const skipRows = openRows.filter(r => r.recommendation === '⚪ SKIP' || r.recommendation === 'SKIP');
+
+// Remote-only policy gates the two visible top sections (APPLY + REVIEW).
+// Unknown-location roles are NEVER dropped — they go to a "Needs location check"
+// bucket. Non-remote roles (Onsite, or Hybrid outside the allowed metro) move to
+// a collapsible so nothing disappears. Weak/Skip/Actioned are left untouched.
+let applyRows = applyCand;
+let reviewRows = reviewCand;
+let needsLocationRows = [];
+let excludedLocationRows = [];
+if (GEO.remoteOnly) {
+  const topCand = [...applyCand, ...reviewCand];
+  applyRows = applyCand.filter(passesRemotePolicy);
+  reviewRows = reviewCand.filter(passesRemotePolicy);
+  needsLocationRows = topCand.filter(r => r.locationClass === 'Unknown');
+  excludedLocationRows = topCand.filter(r => !passesRemotePolicy(r) && r.locationClass !== 'Unknown');
+}
 
 let md = `# Career Ops Scanner — Scored Pipeline\n\n`;
 md += `> Last updated: ${TIMESTAMP} | ${finalRows.length} total roles | `;
@@ -529,20 +678,26 @@ md += `- Tier assignment uses Adj. when available, falls back to Score\n`;
 md += `- 🟢 **APPLY** (4.0+): Strong match — apply\n`;
 md += `- 🟡 **REVIEW** (3.0-3.9): Good potential, needs JD review\n`;
 md += `- 🟠 **WEAK** (2.0-2.9): Level or domain mismatch\n`;
-md += `- ⚪ **SKIP** (<2.0): Too junior or hard mismatch\n\n`;
+md += `- ⚪ **SKIP** (<2.0): Too junior or hard mismatch\n`;
+md += `- **Location** = 🌐 Remote / 🏙️ Hybrid / 🏢 Onsite / 📍 Unknown (best guess from title, URL, scraper + evaluation)\n`;
+if (GEO.remoteOnly) {
+  const metroList = GEO.metros.length ? GEO.metros.map(m => m.replace(/\b\w/g, c => c.toUpperCase())).join(', ') : '(none set)';
+  md += `- 🌐 **Remote-only is ON**: Top Matches & Worth Reviewing show only Remote + Hybrid in your allowed metro (${metroList}). Unknown-location roles wait in **Needs location check**; other Onsite/Hybrid are in **Excluded — not remote**. Set \`geographic.remote_only: false\` in profile.yml for the wider list.\n`;
+}
+md += `\n`;
 
 function writeTable(rows, includeStatus = true) {
   if (includeStatus) {
-    md += `| Score | Adj. | Company | Role | Level | Domain | Link | Status | Liveness | Added |\n`;
-    md += `|-------|------|---------|------|-------|--------|------|--------|----------|-------|\n`;
+    md += `| Score | Adj. | Company | Role | Level | Domain | Location | Link | Status | Liveness | Added |\n`;
+    md += `|-------|------|---------|------|-------|--------|----------|------|--------|----------|-------|\n`;
     for (const r of rows) {
-      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.status} | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
+      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | ${r.locationLabel || '📍 Unknown'} | [View](${r.url}) | ${r.status} | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
     }
   } else {
-    md += `| Score | Adj. | Company | Role | Level | Domain | Link | Added |\n`;
-    md += `|-------|------|---------|------|-------|--------|------|-------|\n`;
+    md += `| Score | Adj. | Company | Role | Level | Domain | Location | Link | Added |\n`;
+    md += `|-------|------|---------|------|-------|--------|----------|------|-------|\n`;
     for (const r of rows) {
-      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.added} |\n`;
+      md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | ${r.locationLabel || '📍 Unknown'} | [View](${r.url}) | ${r.added} |\n`;
     }
   }
 }
@@ -557,6 +712,22 @@ if (reviewRows.length > 0) {
   md += `## 🟡 Worth Reviewing (${reviewRows.length})\n\n`;
   writeTable(reviewRows);
   md += '\n';
+}
+
+if (needsLocationRows.length > 0) {
+  md += `## 📍 Needs location check (${needsLocationRows.length})\n\n`;
+  md += `> These scored as APPLY/REVIEW but their location couldn't be determined. `;
+  md += `Remote-only is ON, so they're held here — not dropped. Verify each one's location, then set a status.\n\n`;
+  writeTable(needsLocationRows);
+  md += '\n';
+}
+
+if (excludedLocationRows.length > 0) {
+  md += `<details><summary>🌍 Excluded — not remote (${excludedLocationRows.length})</summary>\n\n`;
+  md += `> High-scoring but Onsite, or Hybrid outside your allowed metro. Hidden by remote-only. `;
+  md += `Set \`geographic.remote_only: false\` in profile.yml to surface these again.\n\n`;
+  writeTable(excludedLocationRows);
+  md += '\n</details>\n\n';
 }
 
 if (weakRows.length > 0) {
@@ -574,10 +745,10 @@ if (skipRows.length > 0) {
 if (lockedRows.length > 0) {
   md += `## 📌 Actioned (${lockedRows.length})\n\n`;
   md += `> These roles have a user-set status and are not re-scored.\n\n`;
-  md += `| Score | Adj. | Company | Role | Status | Link | Liveness | Added |\n`;
-  md += `|-------|------|---------|------|--------|------|----------|-------|\n`;
+  md += `| Score | Adj. | Company | Role | Status | Location | Link | Liveness | Added |\n`;
+  md += `|-------|------|---------|------|--------|----------|------|----------|-------|\n`;
   for (const r of lockedRows) {
-    md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.status} | [View](${r.url}) | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
+    md += `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.status} | ${r.locationLabel || '📍 Unknown'} | [View](${r.url}) | ${formatLivenessCell(r.liveness)} | ${r.added} |\n`;
   }
   md += '\n';
 }
@@ -595,11 +766,20 @@ if (RECONCILE_MODE) {
   console.log(`Reconciled:     ${reconciledCount} (from ${evalScores.size} evaluation reports)`);
 }
 console.log(`Total in table: ${finalRows.length}`);
-console.log(`🟢 APPLY:       ${applyRows.length}`);
-console.log(`🟡 REVIEW:      ${reviewRows.length}`);
+console.log(`🟢 APPLY:       ${applyRows.length}${GEO.remoteOnly ? ` (of ${applyCand.length} pre-location)` : ''}`);
+console.log(`🟡 REVIEW:      ${reviewRows.length}${GEO.remoteOnly ? ` (of ${reviewCand.length} pre-location)` : ''}`);
+if (GEO.remoteOnly) {
+  console.log(`📍 Needs loc:   ${needsLocationRows.length} (Unknown location — held, not dropped)`);
+  console.log(`🌍 Excluded:    ${excludedLocationRows.length} (Onsite / non-metro Hybrid)`);
+}
 console.log(`🟠 WEAK:        ${weakRows.length}`);
 console.log(`⚪ SKIP:        ${skipRows.length}`);
 console.log(`📌 Actioned:    ${lockedRows.length}`);
+if (GEO.remoteOnly) {
+  const loc = { Remote: 0, Hybrid: 0, Onsite: 0, Unknown: 0 };
+  for (const r of finalRows) loc[r.locationClass] = (loc[r.locationClass] || 0) + 1;
+  console.log(`\nLocation mix:   🌐 ${loc.Remote} Remote | 🏙️ ${loc.Hybrid} Hybrid | 🏢 ${loc.Onsite} Onsite | 📍 ${loc.Unknown} Unknown  (remote_only ON)`);
+}
 if (livenessStats) {
   console.log(`\nLiveness:       ${livenessStats.checked} checked, ${livenessStats.cacheHits} cached, ${livenessStats.staleFlipped} flipped → ❌ Closed`);
 } else if (SKIP_LIVENESS) {

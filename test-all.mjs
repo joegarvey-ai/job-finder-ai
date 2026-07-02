@@ -246,7 +246,7 @@ if (cols10.length === 10 && cols10[1] === '') {
 const p1 = parseTableRow(blankAdjRow);
 const liveness = '🟢 Live (2026-05-25)';
 const reserialize = (r) =>
-  `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | [View](${r.url}) | ${r.status} | ${liveness} | ${r.added} |`;
+  `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | ${r.location || '📍 Unknown'} | [View](${r.url}) | ${r.status} | ${liveness} | ${r.added} |`;
 const p2 = p1 ? parseTableRow(reserialize(p1)) : null;
 
 const okFirst = p1 && p1.adj === '' && p1.added === '2026-05-20 14:30' &&
@@ -258,6 +258,48 @@ if (okFirst && stable) {
   pass('Blank-Adj + Liveness row survives parse→write→parse (no column shift)');
 } else {
   fail(`Blank-Adj round-trip broke: p1=${JSON.stringify(p1)} p2=${JSON.stringify(p2)}`);
+}
+
+// Legacy 10-col row (no Location column) must still parse, with location === ''.
+if (p1 && p1.location === '') {
+  pass('Legacy row (no Location column) parses with empty location');
+} else {
+  fail(`Legacy row should have empty location, got "${p1 && p1.location}"`);
+}
+
+// New-schema fixtures: Location sits before Link. Verify every field — especially
+// Adj. and Added — lands correctly for each shape the writer now emits.
+const schemaFixtures = [
+  {
+    name: 'Full + Location + Liveness (11 cols)',
+    line: '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | 🌐 Remote | [View](https://example.com/y) | 🔲 New | 🟢 Live (2026-07-01) | 2026-07-01 09:00 |',
+    expect: { score: '4.4', adj: '3.8', company: 'Datadog', role: 'Director PM', level: 'Director+', domain: 'AI/ML', location: '🌐 Remote', status: '🔲 New', added: '2026-07-01 09:00' },
+  },
+  {
+    name: 'Full + BLANK Adj + Location (11 cols)',
+    line: '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | 🏙️ Hybrid (Seattle metro) | [View](https://example.com/z) | 🔲 New | 🟢 Live (2026-07-01) | 2026-07-01 09:00 |',
+    expect: { adj: '', company: 'Anthropic', level: 'Director+', location: '🏙️ Hybrid (Seattle metro)', status: '🔲 New', added: '2026-07-01 09:00' },
+  },
+  {
+    name: 'Actioned + Location + Liveness (9 cols)',
+    line: '| 4 ⭐ T2 |  | Figma | Director, Product | ✅ Applied | 🏢 Onsite | [View](https://example.com/f) | 🟢 Live (2026-07-01) | 2026-05-28 |',
+    expect: { adj: '', company: 'Figma', role: 'Director, Product', status: '✅ Applied', location: '🏢 Onsite', added: '2026-05-28' },
+  },
+  {
+    name: 'Weak/Skip + Location, no Status (9 cols)',
+    line: '| 2.5 |  | Acme | Senior PM | Senior PM | Data | 📍 Unknown | [View](https://example.com/a) | 2026-06-01 |',
+    expect: { adj: '', company: 'Acme', level: 'Senior PM', location: '📍 Unknown', status: '🔲 New', added: '2026-06-01' },
+  },
+];
+
+for (const fx of schemaFixtures) {
+  const r = parseTableRow(fx.line);
+  const bad = r ? Object.entries(fx.expect).filter(([k, v]) => r[k] !== v) : [['<null>', 'row']];
+  if (r && bad.length === 0) {
+    pass(`parseTableRow: ${fx.name}`);
+  } else {
+    fail(`parseTableRow: ${fx.name} — mismatches: ${JSON.stringify(bad)} (got ${JSON.stringify(r)})`);
+  }
 }
 
 // ── 4. LIVENESS CLASSIFICATION ──────────────────────────────────
