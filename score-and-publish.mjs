@@ -124,34 +124,80 @@ function getCompanyTier(company) {
   return { tier: 4, label: '' };
 }
 
+// ── Seniority level scores ─────────────────────────────────────────────────
+//
+// Load from config/profile.yml under `scoring.level_scores`. Any key present
+// there overrides the default below; omitted keys keep their default. Higher =
+// surfaced/ranked first. Defaults reflect Joe's targeting: Senior Manager +
+// Principal are PRIMARY (5); Director/Head/VP/Senior Director are a STRETCH
+// (4.5), so they rank just below. Tune the numbers in profile.yml, not here.
+
+const DEFAULT_LEVEL_SCORES = {
+  senior_manager: 5,     // PRIMARY — Senior Manager / Sr. Manager / Senior Group Manager
+  principal: 5,          // PRIMARY — Principal / Principal PM
+  director_plus: 4.5,    // STRETCH — Director / Head of / VP / Senior Director
+  group_pm: 4,           // Group Product Manager
+  marketing_ops_lead: 4, // Marketing Operations leadership
+  staff: 3.5,            // Staff PM
+  lead: 3,               // Lead Product Manager / Senior Lead
+  marketing_ops: 2.5,    // Marketing Operations (non-leadership)
+  senior_pm: 2,          // Senior Product Manager / Senior PM
+  product_manager: 1.5,  // generic PM fallback
+  junior: 0,             // associate / intern / contractor / instructor
+};
+
+function loadLevelScores() {
+  const profilePath = join(ROOT, 'config', 'profile.yml');
+  if (!existsSync(profilePath)) return DEFAULT_LEVEL_SCORES;
+  try {
+    const profile = yaml.load(readFileSync(profilePath, 'utf8')) || {};
+    const ls = profile.scoring?.level_scores;
+    if (!ls || typeof ls !== 'object') return DEFAULT_LEVEL_SCORES;
+    const merged = { ...DEFAULT_LEVEL_SCORES };
+    for (const [k, v] of Object.entries(ls)) {
+      if (typeof v === 'number' && Number.isFinite(v)) merged[k] = v;
+    }
+    return merged;
+  } catch (err) {
+    console.warn(`Warning: could not parse scoring.level_scores from profile.yml (${err.message}). Using defaults.`);
+    return DEFAULT_LEVEL_SCORES;
+  }
+}
+
+const LEVEL_SCORES = loadLevelScores();
+
 function getTitleScore(title) {
   const t = title.toLowerCase();
+  const L = LEVEL_SCORES;
   if (t.includes('associate') || t.includes('part-time') || t.includes('intern') ||
       t.includes('instructor') || t.includes('auditor') || t.includes('contractor') ||
       t.includes('independent'))
-    return { score: 0, level: 'SKIP' };
+    return { score: L.junior, level: 'SKIP' };
   if (t.match(/product manager ii\b/) || (t.match(/^product manager[,\s]/) && !t.includes('director') && !t.includes('principal')))
     return { score: 1, level: 'PM' };
-  if (t.includes('director') || t.includes('head of') || t.match(/\bvp\b/) || t.includes('vice president'))
-    return { score: 5, level: 'Director+' };
+  // PRIMARY targets first: Senior Manager (incl. "Sr. Manager"/"Sr Manager"
+  // abbreviations) and Principal outrank Director+, which is a stretch.
+  if (t.includes('senior manager') || t.includes('senior group manager') ||
+      t.match(/\bsr\.?\s+(group\s+)?manager\b/))
+    return { score: L.senior_manager, level: 'Sr Manager' };
   if (t.includes('principal'))
-    return { score: 4.5, level: 'Principal' };
+    return { score: L.principal, level: 'Principal' };
+  if (t.includes('director') || t.includes('head of') || t.match(/\bvp\b/) || t.includes('vice president'))
+    return { score: L.director_plus, level: 'Director+' };
   if (t.includes('group product manager'))
-    return { score: 4, level: 'Group PM' };
+    return { score: L.group_pm, level: 'Group PM' };
   if (t.includes('staff'))
-    return { score: 3.5, level: 'Staff' };
+    return { score: L.staff, level: 'Staff' };
   if (t.includes('senior lead') || t.includes('lead product manager'))
-    return { score: 3, level: 'Lead' };
-  if (t.includes('senior manager') || t.includes('senior group manager'))
-    return { score: 4, level: 'Sr Manager' };
+    return { score: L.lead, level: 'Lead' };
   if (t.includes('senior product manager') || t.includes('senior pm') || t.match(/^sr\.?\s/))
-    return { score: 2, level: 'Senior PM' };
+    return { score: L.senior_pm, level: 'Senior PM' };
   if ((t.includes('marketing operations') || t.includes('martech')) &&
       (t.includes('director') || t.includes('head') || t.includes('lead') || t.includes('senior manager')))
-    return { score: 4, level: 'MktOps Lead' };
+    return { score: L.marketing_ops_lead, level: 'MktOps Lead' };
   if (t.includes('marketing operations') || t.includes('martech'))
-    return { score: 2.5, level: 'MktOps' };
-  return { score: 1.5, level: 'PM' };
+    return { score: L.marketing_ops, level: 'MktOps' };
+  return { score: L.product_manager, level: 'PM' };
 }
 
 function getDomainScore(title, company) {
@@ -189,6 +235,10 @@ function computeScore(title, company) {
 
   if (titleInfo.score === 0) composite = 0;
   if (titleInfo.level === 'Senior PM' && companyInfo.tier >= 4) composite = Math.min(composite, 2.0);
+  // Level floors keyed off the configurable scoring.level_scores. A level weighted
+  // >= 5 (PRIMARY — Senior Manager/Principal by default) is floored into APPLY at a
+  // tier-1/2 company; a level weighted >= 4.5 (adds STRETCH — Director+) is floored
+  // into REVIEW at a tier-1/2.5 company. Re-tune by editing level_scores in profile.yml.
   if (titleInfo.score >= 5 && companyInfo.tier <= 2) composite = Math.max(composite, 4.0);
   if (titleInfo.score >= 4.5 && companyInfo.tier <= 2.5) composite = Math.max(composite, 3.5);
 
