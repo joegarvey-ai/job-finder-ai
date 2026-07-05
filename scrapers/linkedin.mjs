@@ -43,16 +43,27 @@ function loadQueries() {
   if (existsSync(profilePath)) {
     try {
       const profile = readFileSync(profilePath, 'utf8');
-      // Parse the target_roles.primary list — simple inline YAML list parsing
-      const block = profile.match(/^target_roles:[\s\S]*?(?=^\S|^$)/m);
-      if (block) {
-        const primary = block[0].match(/primary:\s*\n((?:\s*-\s*.+\n?)+)/);
-        if (primary) {
-          const roles = [...primary[1].matchAll(/^\s*-\s*["']?(.+?)["']?\s*$/gm)]
-            .map(m => m[1].trim())
-            .filter(Boolean);
-          if (roles.length) return roles.slice(0, 6).map(q => ({ query: q, remote: true }));
+      // Parse the target_roles.primary list. Walk lines by indentation rather than
+      // one brittle regex: find `primary:`, then take `- item` lines beneath it,
+      // skipping interleaved `#` comments and blank lines, and stop when the indent
+      // returns to primary's level (i.e. the next sibling key like secondary_ic:).
+      // (A comment as the first line under `primary:` used to break the old regex,
+      // silently dropping the user to the generic engineering defaults below.)
+      const lines = profile.split('\n');
+      const start = lines.findIndex(l => /^\s*primary:\s*$/.test(l));
+      if (start !== -1) {
+        const baseIndent = lines[start].match(/^\s*/)[0].length;
+        const roles = [];
+        for (let i = start + 1; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line.trim()) continue;                       // blank line
+          if (line.match(/^\s*/)[0].length <= baseIndent) break; // dedent → left the block
+          const trimmed = line.trim();
+          if (trimmed.startsWith('#')) continue;            // comment line
+          const m = trimmed.match(/^-\s*["']?(.+?)["']?\s*$/);
+          if (m) roles.push(m[1].replace(/\s+#.*$/, '').trim());
         }
+        if (roles.length) return roles.slice(0, 6).map(q => ({ query: q, remote: true }));
       }
     } catch {
       // Fall through to defaults
