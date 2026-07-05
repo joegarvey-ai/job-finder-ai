@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.1...career-ops-v1.9.2) (2026-07-05)
+
+
+### Bug Fixes
+
+* **scrapers:** JSearch loadQueries tolerates comments under primary: ([35f2763](https://github.com/joegarvey-ai/job-finder-ai/commit/35f276357a715b2a96ceb03897d495888a6712e8))
+* **scrapers:** JSearch loadQueries tolerates comments under primary: ([cd60693](https://github.com/joegarvey-ai/job-finder-ai/commit/cd60693d16b5d2453af929fccd5bf38784074d08))
+
 ## [1.9.1](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.0...career-ops-v1.9.1) (2026-05-30)
 
 
