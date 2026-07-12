@@ -336,6 +336,9 @@ function applyGates(job, ctx) {
   const level = ctx.level || classifyLevel(job.title);
   const loc = ctx.loc || { cls: 'Unknown', metro: false, resolved: false };
   const src = ctx.src || sourceTier(job.url);
+  // Geographic policy is injectable (ctx.geo) so the gate logic is testable
+  // without an ambient profile.yml; falls back to the module-level GEO in production.
+  const geo = ctx.geo || GEO;
   const jdText = job.jd || '';
   const haystack = `${job.title || ''} ${jdText}`;
   let verdict = 'pass';
@@ -368,7 +371,7 @@ function applyGates(job, ctx) {
 
   // Location gates — active only under remote_only, and skipped for suspect rows
   // (their location can't be trusted; they're already quarantined above).
-  if (GEO.remoteOnly && !suspect) {
+  if (geo.remoteOnly && !suspect) {
     // G4 — international (check before G3 so the reason is specific). Title too,
     // because the geo marker often lives there ("[EUROPE ONLY]", "PM — London").
     if (isInternational(job.location) || isInternational(jdText) || isInternational(job.title)) {
@@ -381,7 +384,7 @@ function applyGates(job, ctx) {
       // G5 — unresolved location → quarantine (cannot publish above REVIEW)
       escalate('quarantine'); reasons.push('G5 location unresolved'); flags.push('📍 location unresolved');
     }
-  } else if (GEO.remoteOnly && suspect) {
+  } else if (geo.remoteOnly && suspect) {
     flags.push('📍 location untrusted');
   }
 
@@ -755,12 +758,12 @@ function buildIndexes(jobs) {
 }
 
 // resolveLocation → applyGates → computeScore for one role. Pure given `idx`.
-function evaluateRole(job, idx = { jdHashToCompanies: new Map(), t1Keys: new Set() }, evalScore) {
+function evaluateRole(job, idx = { jdHashToCompanies: new Map(), t1Keys: new Set() }, evalScore, geo) {
   const level = classifyLevel(job.title);
   const loc = resolveLocation(job);
   const src = sourceTier(job.url);
   const jdDupCompanies = job._jdHash ? idx.jdHashToCompanies.get(job._jdHash) : null;
-  const gate = applyGates(job, { loc, level, src, jdDupCompanies, t1Index: idx.t1Keys });
+  const gate = applyGates(job, { loc, level, src, jdDupCompanies, t1Index: idx.t1Keys, geo });
   const scored = computeScore(job, { loc, level, compSource: gate.compSource, evalScore });
   // Quarantine / cap_review may NOT sit in APPLY — cap the effective score at
   // REVIEW-max so an unverified/off-track role can never top the list.

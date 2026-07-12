@@ -581,6 +581,11 @@ try {
   const { classifyLevel, evaluateRole, buildIndexes, computeScore, locationFromUrl } = sp;
   const { _internals: liveInt } = await import(pathToFileURL(join(ROOT, 'liveness-http.mjs')).href);
 
+  // Location gates (G3/G4/G5) only run when geographic.remote_only is on. The live
+  // profile sets it; CI has no profile.yml (remote_only defaults off), so inject the
+  // policy here to keep these fixtures deterministic regardless of ambient config.
+  const REMOTE_ONLY_GEO = { remoteOnly: true, metros: ['seattle', 'bellevue', 'tacoma', 'redmond', 'renton', 'kent', 'kirkland', 'sumner', 'auburn'] };
+
   // ---- Acceptance: one fixture per gate archetype ----
   // Fictional companies on generic public job-board domains; each exercises a
   // distinct gate. Rename freely — the coverage (drop/quarantine/survive per
@@ -594,7 +599,7 @@ try {
   ];
   const idx = buildIndexes(five.map(f => f.job));
   for (const { key, want, gate, job } of five) {
-    const ev = evaluateRole(job, idx);
+    const ev = evaluateRole(job, idx, undefined, REMOTE_ONLY_GEO);
     const v = ev.gate.verdict;
     const ok = want === 'survive' ? (v === 'pass' || v === 'cap_review') : v === want;
     if (ok) pass(`${key}: ${want === 'survive' ? 'survives gates' : `${want} (${gate})`} — verdict=${v}`);
@@ -602,7 +607,7 @@ try {
   }
 
   // G10: a remote-eligible role survives the gates AND liveness marks it stale (expired/410).
-  const cev = evaluateRole(five[4].job, idx);
+  const cev = evaluateRole(five[4].job, idx, undefined, REMOTE_ONLY_GEO);
   const staleByHttp = liveInt.classifyHttpLiveness({ url: five[4].job.url, status: 410 }).result === 'stale';
   if ((cev.gate.verdict === 'pass' || cev.gate.verdict === 'cap_review') && staleByHttp) {
     pass('Remote role survives gates and is marked STALE by liveness (G10)');
@@ -654,7 +659,7 @@ try {
     { title: 'Principal Product Manager, AI Platform', company: 'Anthropic', url: 'https://job-boards.greenhouse.io/anthropic/jobs/2', location: 'Remote (US)', jd: 'AI product strategy roadmap platform evals agentic' }, // strong → APPLY
   ];
   const cidx = buildIndexes(cohort);
-  const evs = cohort.map(j => ({ title: j.title, ev: evaluateRole(j, cidx) }));
+  const evs = cohort.map(j => ({ title: j.title, ev: evaluateRole(j, cidx, undefined, REMOTE_ONLY_GEO) }));
   const active = evs.filter(e => e.ev.gate.verdict === 'pass' || e.ev.gate.verdict === 'cap_review');
   const topOrReview = active.filter(e => e.ev.recommendation === '🟢 APPLY' || e.ev.recommendation === '🟡 REVIEW').map(e => e.title);
   if (!topOrReview.some(t => /Senior Product Manager, Growth/.test(t)) && topOrReview.some(t => /Principal Product Manager, AI Platform/.test(t))) {
