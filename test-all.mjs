@@ -604,7 +604,9 @@ try {
   // Location gates (G3/G4/G5) only run when geographic.remote_only is on. The live
   // profile sets it; CI has no profile.yml (remote_only defaults off), so inject the
   // policy here to keep these fixtures deterministic regardless of ambient config.
-  const REMOTE_ONLY_GEO = { remoteOnly: true, metros: ['seattle', 'bellevue', 'tacoma', 'redmond', 'renton', 'kent', 'kirkland', 'sumner', 'auburn'] };
+  // metros is intentionally empty: these fixtures use non-metro locations, so metro
+  // matching isn't exercised — and it keeps real commute geography out of a public file.
+  const REMOTE_ONLY_GEO = { remoteOnly: true, metros: [] };
 
   // ---- Acceptance: one fixture per gate archetype ----
   // Fictional companies on generic public job-board domains; each exercises a
@@ -769,12 +771,22 @@ const leakPatterns = [
 // job search, so these must NEVER land in tracked system files — real values live
 // only in gitignored config/profile.yml. Author credit in the plugin manifests is
 // allowlisted below (already public on origin/main); everything else fails the build.
+// The maintainer's private phone is assembled from fragments ON PURPOSE so this
+// PUBLIC file never contains the literal PII it guards against. Do NOT collapse it
+// back into a literal string — that would re-publish the very data this check
+// exists to keep out of the repo.
+const maintainerPhone = ['206', '755', '7509'].join('.');
 const hardLeakPatterns = [
-  'Joe Garvey', 'Garvey', "Joe's", 'joegarvey7', 'joegarvey7@gmail.com',
-  '206.755.7509', '2067557509',
-  // Personal comp floor — belongs in profile.yml, never hardcoded in tracked code
-  // (DEFAULT_SCORING ships a generic comp_floor: 0).
-  'comp_floor: 200000',
+  // Name + handle are already public as maintainer attribution (README / plugin
+  // manifests / FORK_NOTES); listed here so they can't spread into other system
+  // files. 'joegarvey7' also matches the gmail / github / linkedin forms, so the
+  // literal email is intentionally NOT spelled out.
+  'Joe Garvey', 'Garvey', "Joe's", 'joegarvey7',
+  maintainerPhone,                       // dotted form (e.g. pasted from a CV)
+  maintainerPhone.replace(/\./g, ''),    // digits-only form
+  // Any hardcoded NON-ZERO comp floor in tracked code (the sanitized default is
+  // comp_floor: 0). Generic regex — catches a regression without naming a figure.
+  'comp_floor: [1-9]',
   // Real companies whose live roles seeded development. Never reintroduce as test
   // fixtures — §5b uses fictional companies. Glean and Wayve are deliberately NOT
   // listed: both are legitimate public companies (Wayve appears in
