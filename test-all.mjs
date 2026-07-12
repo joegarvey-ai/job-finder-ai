@@ -263,9 +263,9 @@ if (okFirst && stable) {
 }
 
 // S2 stage marker survives a round-trip (new schema).
-const s2Row = '| 4.2 ⭐ T2 | S2 | Glean | Head of Product | Director+ | AI/ML | 🌐 Remote | [View](https://job-boards.greenhouse.io/glean/jobs/9) | 🔲 New | 🟢 Live (2026-07-11) | 2026-07-11 09:00 |';
+const s2Row = '| 4.2 ⭐ T2 | S2 | Meridian Labs | Head of Product | Director+ | AI/ML | 🌐 Remote | [View](https://job-boards.greenhouse.io/meridianlabs/jobs/9) | 🔲 New | 🟢 Live (2026-07-11) | 2026-07-11 09:00 |';
 const ps2 = parseTableRow(s2Row);
-if (ps2 && ps2.stage === 'S2' && ps2.company === 'Glean' && ps2.score === '4.2 ⭐ T2' && ps2.added === '2026-07-11 09:00') {
+if (ps2 && ps2.stage === 'S2' && ps2.company === 'Meridian Labs' && ps2.score === '4.2 ⭐ T2' && ps2.added === '2026-07-11 09:00') {
   pass('S2 Stage marker parses (Score/Company/Added aligned)');
 } else {
   fail(`S2 Stage row parse broke: ${JSON.stringify(ps2)}`);
@@ -569,9 +569,10 @@ try {
 
 // ── 5b. SCORING MODEL V2 — gates, level-gate, weighted score ─────
 //
-// The five real roles that motivated Scoring Model V2, plus the unit tests from
-// the implementation spec. Gates run BEFORE scoring; a hard skip drops/quarantines
-// and can never be out-competed by a strong title.
+// Five synthetic roles — one per gate archetype (onsite, international, suspect
+// attribution, hybrid-metro martech, stale) — plus the unit tests from the spec.
+// Gates run BEFORE scoring; a hard skip drops/quarantines and can never be
+// out-competed by a strong title.
 
 console.log('\n5b. Scoring Model V2 (gates + weighted score)');
 
@@ -580,13 +581,16 @@ try {
   const { classifyLevel, evaluateRole, buildIndexes, computeScore, locationFromUrl } = sp;
   const { _internals: liveInt } = await import(pathToFileURL(join(ROOT, 'liveness-http.mjs')).href);
 
-  // ---- Acceptance: the five known false positives ----
+  // ---- Acceptance: one fixture per gate archetype ----
+  // Fictional companies on generic public job-board domains; each exercises a
+  // distinct gate. Rename freely — the coverage (drop/quarantine/survive per
+  // gate) is what the assertions below lock in.
   const five = [
-    { key: 'Goodwin', want: 'drop', gate: 'G3', job: { title: 'Director, Product AI and Platforms', company: 'Goodwin', url: 'https://www.jobleads.com/us/job/director-product-ai-platforms--washington--e1ce4038b1e5', location: '' } },
-    { key: 'Wayve', want: 'drop', gate: 'G4', job: { title: 'Staff Product Manager, Cloud Platform - AI Portal', company: 'Wayve', url: 'https://wayve.firststage.co/jobs?gh_jid=8562409002', location: 'London, United Kingdom' } },
-    { key: 'Dormont', want: 'quarantine', gate: 'G11', job: { title: 'Senior Marketing Operations Lead', company: 'Dormont Manufacturing Co', url: 'https://www.jobleads.com/us/job/sr-manager-marketing-operations--holmdel--e7209f273b16', location: 'Holmdel, New Jersey', jd: 'Own our HubSpot, Pardot, Salesloft and Gong martech stack.' } },
-    { key: 'Glean', want: 'drop', gate: 'G3', job: { title: 'Senior Manager, Lifecycle Marketing Operations', company: 'Glean', url: 'https://job-boards.greenhouse.io/glean/jobs/4012', location: 'Mountain View, CA', jd: 'Hybrid — 4 days a week in our SF or Mountain View office. Marketo administration.' } },
-    { key: 'Comscore', want: 'survive', gate: 'G10', job: { title: 'Senior Manager, Product Management – Data Integrations', company: 'Comscore', url: 'https://job-boards.greenhouse.io/comscore/jobs/778', location: 'Remote (US)', jd: 'Remote-eligible. Own the data integrations roadmap.' } },
+    { key: 'Harborview', want: 'drop', gate: 'G3', job: { title: 'Director, Product AI and Platforms', company: 'Harborview Legal LLP', url: 'https://www.jobleads.com/us/job/director-product-ai-platforms--washington--a1b2c3d4e5f6', location: '' } },
+    { key: 'Northwind', want: 'drop', gate: 'G4', job: { title: 'Staff Product Manager, Cloud Platform', company: 'Northwind Robotics', url: 'https://job-boards.greenhouse.io/northwindrobotics/jobs?gh_jid=1088342765', location: 'London, United Kingdom' } },
+    { key: 'Ridgeline', want: 'quarantine', gate: 'G11', job: { title: 'Senior Marketing Operations Lead', company: 'Ridgeline Manufacturing Co', url: 'https://www.jobleads.com/us/job/sr-manager-marketing-operations--cleveland--f4a9c2075b18', location: 'Cleveland, Ohio', jd: 'Own our HubSpot, Marketo, and Pardot martech stack.' } },
+    { key: 'Beacon Labs', want: 'drop', gate: 'G3', job: { title: 'Senior Manager, Lifecycle Marketing Operations', company: 'Beacon Labs', url: 'https://job-boards.greenhouse.io/beaconlabs/jobs/5107', location: 'Mountain View, CA', jd: 'Hybrid — 4 days a week in our SF or Mountain View office. Marketo administration.' } },
+    { key: 'Vantage', want: 'survive', gate: 'G10', job: { title: 'Senior Manager, Product Management – Data Integrations', company: 'Vantage Metrics', url: 'https://job-boards.greenhouse.io/vantagemetrics/jobs/612', location: 'Remote (US)', jd: 'Remote-eligible. Own the data integrations roadmap.' } },
   ];
   const idx = buildIndexes(five.map(f => f.job));
   for (const { key, want, gate, job } of five) {
@@ -597,20 +601,22 @@ try {
     else fail(`${key}: expected ${want}, got verdict=${v} (reasons: ${ev.gate.reasons.join('; ')})`);
   }
 
-  // Comscore G10: survives gates AND liveness marks it stale (expired/410).
+  // G10: a remote-eligible role survives the gates AND liveness marks it stale (expired/410).
   const cev = evaluateRole(five[4].job, idx);
   const staleByHttp = liveInt.classifyHttpLiveness({ url: five[4].job.url, status: 410 }).result === 'stale';
   if ((cev.gate.verdict === 'pass' || cev.gate.verdict === 'cap_review') && staleByHttp) {
-    pass('Comscore survives gates and is marked STALE by liveness (G10)');
+    pass('Remote role survives gates and is marked STALE by liveness (G10)');
   } else {
-    fail(`Comscore G10 path broke: verdict=${cev.gate.verdict}, staleByHttp=${staleByHttp}`);
+    fail(`G10 stale-survivor path broke: verdict=${cev.gate.verdict}, staleByHttp=${staleByHttp}`);
   }
 
   // ---- Unit tests ----
-  // #1 — marketing-ops classified as martech, NOT a PM Sr Manager (the Glean bug)
+  // #1 — marketing-ops classified as martech, NOT a PM Sr Manager (the marketing-ops
+  //      impersonation bug: "Senior Manager, ... Marketing Operations" must not read
+  //      as a primary-target PM Senior Manager).
   const u1 = classifyLevel('Senior Manager, Lifecycle Marketing Operations');
-  if (u1.track === 'martech' && /MktOps/.test(u1.level)) pass('#1 classifyLevel(Glean title) = marketing-ops, not PM Sr Manager');
-  else fail(`#1 Glean title misclassified: ${JSON.stringify(u1)}`);
+  if (u1.track === 'martech' && /MktOps/.test(u1.level)) pass('#1 classifyLevel(marketing-ops title) = marketing-ops, not PM Sr Manager');
+  else fail(`#1 marketing-ops title misclassified: ${JSON.stringify(u1)}`);
 
   // #2 — demotion title drops
   if (classifyLevel('Senior Product Manager, Growth').gate === 'drop') pass('#2 classifyLevel(Senior Product Manager, Growth) → gate:drop');
@@ -630,10 +636,10 @@ try {
   else fail('#3 computeScore must not have a level dimension');
 
   // #4 — URL-slug city parsing
-  if (locationFromUrl('https://www.jobleads.com/us/job/x--washington--e1ce4038b1e5').includes('washington')) pass('#4 locationFromUrl(--washington--) → washington');
+  if (locationFromUrl('https://www.jobleads.com/us/job/x--washington--a1b2c3d4e5f6').includes('washington')) pass('#4 locationFromUrl(--washington--) → washington');
   else fail('#4 locationFromUrl should extract washington from a --city-- slug');
 
-  // #5 — liveness: job ID in the QUERY string (Wayve)
+  // #5 — liveness: job ID in the QUERY string (not just the path)
   if (liveInt.isGenericCareersRedirect('https://x.co/jobs?gh_jid=123', 'https://x.co/jobs') === true) pass('#5 isGenericCareersRedirect(?gh_jid=123 → /jobs) → true');
   else fail('#5 query-string job-ID redirect should be detected');
 
@@ -726,9 +732,30 @@ for (const f of userFiles) {
 
 console.log('\n8. Personal data leak check');
 
+// WARN-level: original-author (santifer) credit. Attribution legitimately appears
+// in some non-allowlisted files (TRADEMARK, CHANGELOG, translated READMEs), so we
+// surface stray references for review but do NOT block on them.
 const leakPatterns = [
   'Santiago', 'santifer.io', 'Santifer iRepair', 'Zinkee', 'ALMAS',
   'hi@santifer.io', '688921377', '/Users/santifer/',
+];
+
+// HARD-FAIL: fork-maintainer PII + personal-search data. This fork drives a real
+// job search, so these must NEVER land in tracked system files — real values live
+// only in gitignored config/profile.yml. Author credit in the plugin manifests is
+// allowlisted below (already public on origin/main); everything else fails the build.
+const hardLeakPatterns = [
+  'Joe Garvey', 'Garvey', "Joe's", 'joegarvey7', 'joegarvey7@gmail.com',
+  '206.755.7509', '2067557509',
+  // Personal comp floor — belongs in profile.yml, never hardcoded in tracked code
+  // (DEFAULT_SCORING ships a generic comp_floor: 0).
+  'comp_floor: 200000',
+  // Real companies whose live roles seeded development. Never reintroduce as test
+  // fixtures — §5b uses fictional companies. Glean and Wayve are deliberately NOT
+  // listed: both are legitimate public companies (Wayve appears in
+  // templates/portals.example.yml; Glean is a common public target), so a bare
+  // pattern would risk false-positives.
+  'Goodwin', 'Dormont', 'Comscore',
 ];
 
 const scanExtensions = ['md', 'yml', 'html', 'mjs', 'sh', 'go', 'json'];
@@ -744,6 +771,12 @@ const allowedFiles = [
   '.github/SECURITY.md',
   // Dashboard credit string
   'dashboard/internal/ui/screens/pipeline.go',
+  // Fork plugin manifests legitimately credit the fork maintainer as author
+  // (analogous to the README credits above; already public on origin/main).
+  '.claude-plugin/marketplace.json', '.claude-plugin/plugin.json',
+  // FORK_NOTES.md documents the fork; its title carries the fork handle
+  // (joegarvey7/career-ops) as legitimate attribution.
+  'FORK_NOTES.md',
 ];
 
 // Build pathspec for git grep — only scan tracked files matching these
@@ -753,23 +786,35 @@ const allowedFiles = [
 // going to reach a commit anyway.
 const grepPathspec = scanExtensions.map(e => `'*.${e}'`).join(' ');
 
-let leakFound = false;
-for (const pattern of leakPatterns) {
-  const result = run(
-    `git grep -n "${pattern}" -- ${grepPathspec} 2>/dev/null`
-  );
-  if (result) {
+const scanForPatterns = (patterns) => {
+  const hits = [];
+  for (const pattern of patterns) {
+    const result = run(`git grep -n "${pattern}" -- ${grepPathspec} 2>/dev/null`);
+    if (!result) continue;
     for (const line of result.split('\n')) {
       const file = line.split(':')[0];
+      if (!file) continue;
       if (allowedFiles.some(a => file.includes(a))) continue;
       if (file.includes('dashboard/go.mod')) continue;
-      warn(`Possible personal data in ${file}: "${pattern}"`);
-      leakFound = true;
+      hits.push({ file, pattern });
     }
   }
+  return hits;
+};
+
+// HARD-FAIL: maintainer PII / personal-search data must never reach a tracked file.
+const hardHits = scanForPatterns(hardLeakPatterns);
+for (const { file, pattern } of hardHits) fail(`Personal data leak in ${file}: "${pattern}"`);
+if (hardHits.length === 0) {
+  pass('No maintainer PII / personal-search data in tracked files');
 }
+
+// WARN-level: stray original-author credit (informational, non-blocking).
+const softHits = scanForPatterns(leakPatterns);
+for (const { file, pattern } of softHits) warn(`Author-credit reference in ${file}: "${pattern}"`);
+let leakFound = softHits.length > 0;
 if (!leakFound) {
-  pass('No personal data leaks outside allowed files');
+  pass('No stray author-credit references outside allowed files');
 }
 
 // ── 7. ABSOLUTE PATH CHECK ──────────────────────────────────────

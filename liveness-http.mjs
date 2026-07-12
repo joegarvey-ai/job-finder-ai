@@ -1,6 +1,6 @@
 // liveness-http.mjs — Lightweight HTTP-based liveness checker
 //
-// Purpose: verify job URLs are still active before Joe wastes time on gap analysis.
+// Purpose: verify job URLs are still active before a user wastes time on gap analysis.
 // Used by score-and-publish.mjs to check APPLY/REVIEW tier roles post-scoring.
 //
 // This is intentionally separate from check-liveness.mjs (Playwright-based, full-

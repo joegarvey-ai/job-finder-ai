@@ -85,24 +85,19 @@ const OPEN_STATUSES = ['🔲 New', '👀 Reviewing'];
 // ── Company tiers ────────────────────────────────────────────────────────
 //
 // Load from config/profile.yml under `scoring.company_tiers`. If that section
-// is absent, fall back to the AI/data/devtools-flavored defaults below (which
-// reflect the original author's PM-in-AI search). Friend forks: add a
-// scoring.company_tiers section to your profile.yml — see profile.example.yml.
+// is absent, fall back to the minimal illustrative default below. This default
+// is NOT a real target list — it exists only so the tiering code is functional
+// out of the box (and the test suite has a known tier-1 example). Set your own
+// companies in profile.yml (see profile.example.yml).
 //
-// Substring match (case-insensitive) against company name, so "weights &
-// biases" catches "Weights & Biases AI" too.
+// Substring match (case-insensitive) against company name, so "stripe" catches
+// "Stripe Inc." too.
 
 const DEFAULT_COMPANY_TIERS = {
-  tier_1: ['anthropic', 'snowflake', 'databricks', 'dbt labs', 'stripe'],
-  tier_2: ['notion', 'figma', 'braze', 'iterable', 'segment', 'twilio', 'hubspot',
-    'amplitude', 'mixpanel', 'glean', 'retool'],
-  tier_3: ['adobe', 'salesforce', 'medallia', 'qualtrics', 'scale ai', 'weights & biases',
-    'weights and biases', 'langfuse'],
-  strong: ['datadog', 'asana', 'postman', 'klaviyo', 'fivetran', 'pagerduty',
-    'launchdarkly', 'newrelic', 'new relic', 'dropbox', 'reddit', 'confluent', 'clickup',
-    'gitlab', 'digitalocean', 'okta', 'lattice', 'domino data lab', 'instacart', 'affirm',
-    'mercury', 'descript', 'bloomreach', 'attentive', 'socure', 'geico', 'workday', 'autodesk',
-    'merck', 'axon'],
+  tier_1: ['anthropic'],
+  tier_2: [],
+  tier_3: [],
+  strong: [],
 };
 
 function loadCompanyTiers() {
@@ -136,17 +131,22 @@ function getCompanyTier(company) {
   return { tier: 4, label: '' };
 }
 
-// ── Scoring Model V2 config (Brief V1.2, 2026-07-10) ───────────────────────
+// ── Scoring Model V2 config ────────────────────────────────────────────────
 //
-// USER-layer values live in config/profile.yml under `scoring`. The system
-// ships sane defaults so a trimmed profile still scores. GOVERNING PRINCIPLE:
-// the brief's hard skips (N1–N12) are GATES, not WEIGHTS. Gates run BEFORE the
-// weighted mean and drop/quarantine; a hard skip can never be out-competed by a
-// strong title. The old level_scores ladder + level floors are DELETED — level
-// is now a gate (demotions drop; all pass-levels are equivalent, content ranks).
+// USER-layer values live in config/profile.yml under `scoring` and OVERRIDE the
+// defaults below via loadScoringConfig(). The system ships GENERIC, non-personal
+// defaults so a trimmed profile still scores — set your own comp floor, phrase
+// lists, and gates in profile.yml (see profile.example.yml). GOVERNING PRINCIPLE:
+// hard skips are GATES, not WEIGHTS. Gates run BEFORE the weighted mean and
+// drop/quarantine; a hard skip can never be out-competed by a strong title. The
+// old level_scores ladder + level floors are DELETED — level is now a gate
+// (demotions drop; all pass-levels are equivalent, content ranks).
+//
+// The comp_floor, content_fit phrase lists, and gate phrase lists here are
+// deliberately generic examples. Tune them to your own search in profile.yml.
 
 const DEFAULT_SCORING = {
-  comp_floor: 200000,
+  comp_floor: 0,                    // no floor unless the user sets scoring.comp_floor in profile.yml
   level_gate: {
     pass: ['senior manager', 'principal', 'group product manager', 'staff', 'lead',
       'director', 'head of', 'vice president', 'vp'],
@@ -160,25 +160,22 @@ const DEFAULT_SCORING = {
     t3: ['jobleads.com', 'trabajo.org', 'jooble.org', 'whatjobs.com', 'jobilize.com',
       'learn4good.com', 'lensa.com', 'theladders.com', 'salutemyjob.com', 'mediabistro.com'],
   },
+  // Generic product-management phrase set. Replace with the language of your own
+  // target roles in profile.yml under scoring.content_fit.
   content_fit: {
-    green_flags: ['product strategy', 'roadmap', 'cross-functional', 'ai/ml', 'ai product',
-      'llm', 'rag', 'agentic', 'mcp', 'evals', 'guardrails', 'ai governance', 'platform',
-      'developer platform', 'martech', 'marketing operations', 'attribution', 'segmentation',
-      'cdp', 'data platform', 'analytics', 'enterprise', 'b2b', 'stakeholder', 'quality bar',
-      'prototype', 'prototyping', 'builder', '0-to-1', 'founding pm', 'prompt engineering', 'ai-native'],
-    red_flags: ['product marketing', 'consumer', 'b2c', 'd2c', 'direct-to-consumer', 'growth hacking', 'p&l ownership'],
+    green_flags: ['product strategy', 'roadmap', 'cross-functional', 'stakeholder',
+      'platform', 'enterprise', 'b2b', 'analytics', 'api'],
+    red_flags: [],
   },
+  // Generic gate examples. Populate these in profile.yml (scoring.gates) with the
+  // hard skips and role-type terms that fit your search; an empty list never fires.
   gates: {
-    coding_skip: ['proficiency in python', 'proficiency in java', 'proficiency in typescript',
-      'proficiency in go', 'review pull requests', 'reviewing pull requests', 'code review',
-      'coding assessment', 'coding exercise', 'coding challenge', 'live coding', 'take-home coding', 'pair programming interview'],
-    api_ml_research: ['sdk', 'forward deployed', 'forward-deployed', 'solutions architect',
-      'solutions engineer', 'core model', 'model training', 'ml infrastructure', 'ml infra',
-      'research scientist', 'research engineer', 'developer experience engineer'],
-    consumer: ['consumer product', 'b2c', 'd2c', 'direct-to-consumer', 'consumer app', 'consumer-facing app'],
+    coding_skip: ['coding assessment', 'coding exercise', 'coding challenge', 'live coding'],
+    api_ml_research: [],
+    consumer: [],
     product_ok: ['product manager', 'product management', 'head of product', 'director of product',
-      'director, product', 'group product manager', 'principal pm', 'staff pm', 'product lead', 'vp product', 'vp, product'],
-    martech_ok: ['marketing operations', 'martech', 'marketing technology', 'lifecycle marketing', 'growth platform', 'marketing ops'],
+      'group product manager', 'product lead'],
+    martech_ok: ['marketing operations', 'marketing technology', 'martech'],
   },
 };
 
@@ -218,12 +215,12 @@ const countHits = (text, phrases) => { const t = (text || '').toLowerCase(); ret
 
 // ── Level: ladder → GATE (Task 2a) ─────────────────────────────────────────
 // Returns { level, gate: 'pass'|'drop', track: 'product'|'martech'|'other' }.
-// Order is deliberate (Task 2a / RCA RC2):
+// Order is deliberate (Task 2a):
 //   1. junk (intern/contractor/…) → drop
 //   2. DEMOTION list FIRST → drop (a demotion is never rescued by a good modifier)
 //   3. MARKETING-OPS above the generic senior-manager check — otherwise
 //      "Senior Manager, Lifecycle Marketing Operations" impersonates a PM Sr
-//      Manager (the Glean bug). Classify it as martech.
+//      Manager (the marketing-ops impersonation bug). Classify it as martech.
 //   4. pass-leadership levels → pass (ALL EQUIVALENT — level never ranks)
 //   5. plain PM / other
 function classifyLevel(title) {
@@ -295,7 +292,8 @@ function isInternational(text) {
 }
 
 // Employer↔JD plausibility flag (G11, cheap half). A manufacturing / industrial
-// employer "posting" a software/martech/product role is the Dormont signature.
+// employer "posting" a software/martech/product role is the classic
+// fabricated-attribution signature.
 const INDUSTRIAL_EMPLOYER = /manufactur|\bmfg\b|foundry|\bsteel\b|plumbing|connector|castings?|industrial supply|machining|fabricat/i;
 function employerRoleImplausible(company, title) {
   const c = (company || '').toLowerCase();
@@ -361,7 +359,8 @@ function applyGates(job, ctx) {
   }
 
   // G11 — legitimacy FIRST: same JD body under ≥2 employers, or an implausible
-  // employer↔role (the Dormont case). A suspect posting's self-reported facts —
+  // employer↔role (e.g. an industrial manufacturer posting a B2B martech SaaS
+  // role). A suspect posting's self-reported facts —
   // including its location — are untrusted, so we QUARANTINE for human review
   // rather than letting its (possibly fabricated) location silently DROP it.
   const suspect = (ctx.jdDupCompanies && ctx.jdDupCompanies.size >= 2) || employerRoleImplausible(job.company, job.title);
@@ -540,8 +539,8 @@ function buildMetroMatcher(metros) {
 const inAllowedMetro = buildMetroMatcher(GEO.metros);
 
 // Pull location hints out of a job URL (aggregators encode city/remote in the path).
-// Goodwin's and Dormont's cities were literally in the JobLeads slug and went
-// unparsed because only whatjobs + ziprecruiter were handled (RCA RC4 / Task 2d).
+// Some aggregators (JobLeads / Jobilize) put the city in the URL slug; earlier
+// code only handled whatjobs + ziprecruiter, so those cities went unparsed (Task 2d).
 function locationFromUrl(url) {
   const out = [];
   if (!url) return out;
@@ -551,7 +550,7 @@ function locationFromUrl(url) {
   m = url.match(/\/-in-([^/?#]+)/i); // ziprecruiter: /-in-Remote,OR  /-in-Union-City,NJ
   if (m) out.push(m[1].replace(/-/g, ' '));
   // JobLeads (and similar) encode the city as a `--city--` segment before the
-  // trailing hash: …--washington--<hash>, …--holmdel-township--<hash>.
+  // trailing hash: …--washington--<hash>, …--new-york--<hash>.
   m = lower.match(/--([a-z][a-z-]*?)--[0-9a-f]{6,}/);
   if (m) out.push(m[1].replace(/-/g, ' '));
   // Jobilize / Learn4Good: /job/us-<st>-<city>-<role-keyword>…
@@ -580,7 +579,7 @@ function classifyLocation(rawStrings) {
   // US state name) with no remote/hybrid signal reads as Onsite. The state-name
   // check matters because the jsearch/aggregator digests carry FULL state names
   // ("Bethesda, Maryland", "Pierre, South Dakota"), which the 2-letter pattern
-  // misses — those were silently landing in Unknown instead of gating (RCA).
+  // misses — those were silently landing in Unknown instead of gating.
   if (metro || /,\s*[a-z]{2}\b/.test(joined) ||
       /\b(new york|san francisco|bay area|boston|austin|chicago|washington|district of columbia|jersey city|norwalk|atlanta|denver|los angeles|london)\b/.test(joined) ||
       US_STATE_NAMES.test(joined) || isInternational(joined))
@@ -591,7 +590,7 @@ function classifyLocation(rawStrings) {
 // Full US state names (+ DC) — digests carry these rather than 2-letter codes.
 const US_STATE_NAMES = /\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|west virginia|wisconsin|wyoming|district of columbia)\b/i;
 
-// resolveLocation(job) — precedence order (Task 2d / RCA F1): ATS-API location →
+// resolveLocation(job) — precedence order (Task 2d): ATS-API location →
 // JSON-LD → URL slug → JD body. Location is a REQUIRED field for publication:
 // when nothing resolves to a concrete class, the row is quarantined (G5), never
 // published above REVIEW, so an unverified role can't top the APPLY list.
