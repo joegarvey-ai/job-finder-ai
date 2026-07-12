@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.4](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.3...career-ops-v1.9.4) (2026-07-12)
+
+
+### Bug Fixes
+
+* **security:** keep maintainer PII/comp literals out of the public leak check ([765386f](https://github.com/joegarvey-ai/job-finder-ai/commit/765386fb5124d92aac403ac772dc69653b448475))
+* **security:** keep maintainer PII/comp literals out of the public leak check ([53760ce](https://github.com/joegarvey-ai/job-finder-ai/commit/53760ce98a419ab04b8012586c5019c821b664f3))
+
 ## [1.9.3](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.2...career-ops-v1.9.3) (2026-07-12)
 
 
