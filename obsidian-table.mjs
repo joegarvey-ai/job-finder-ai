@@ -1,13 +1,16 @@
 // obsidian-table.mjs — Shared parsing for the Obsidian scanner table.
 //
 // Both score-and-publish.mjs and reconcile-scores.mjs read the same Markdown
-// table. The modern column order is:
-//   Score | Adj. | Company | Role | Level | Domain | Location | Link | Status | Liveness | Added
+// table. The modern column order (Scoring Model V2) is:
+//   Score | Stage | Company | Role | Level | Domain | Location | Link | Status | Liveness | Added
 // with these variants also emitted by the writer:
-//   Actioned:  Score | Adj. | Company | Role | Status | Location | Link | Liveness | Added
-//   Weak/Skip: Score | Adj. | Company | Role | Level | Domain | Location | Link | Added
-// plus legacy shapes (no Location, no Liveness, or no Adj.) still present in
-// older tables that must survive one migration read.
+//   Actioned:  Score | Stage | Company | Role | Status | Location | Link | Liveness | Added
+//   Weak/Skip: Score | Stage | Company | Role | Level | Domain | Location | Link | Added
+// The `Stage` column (S1 = deterministic, S2 = LLM JD-depth) REPLACED the old
+// `Adj.` column. The second cell is still detected the same way, so a legacy
+// table whose second column holds a numeric Adj. score still parses on one
+// migration read (the stale number is dropped — Adj. is deprecated).
+// Legacy shapes (no Location, no Liveness, or no second column) also survive.
 //
 // CRITICAL — interior empty cells:
 //   A markdown row is wrapped in outer pipes, so `'| a | b |'.split('|')`
@@ -59,16 +62,18 @@ export function parseTableRow(line) {
   if (li < 0) return null;
   const lastIdx = cols.length - 1;
 
-  // Adj. column present when col[1] is empty / em-dash / score-like. The
-  // `>= 7` floor keeps a short legacy row (Score | Company | Role | Status |
-  // Link | Added) from being misread as having an Adj. column. (test-all.mjs
-  // asserts this literal threshold is present.)
-  const adjLike = cols[1] === '' || cols[1] === '—' || /^[\d.]+(?:\/5)?$/.test(cols[1]);
-  const hasAdj = adjLike && cols.length >= 7;
+  // Second column (Stage) present when col[1] is empty / em-dash / an S1|S2
+  // marker / or a legacy numeric Adj. score. The `>= 7` floor keeps a short
+  // legacy row (Score | Company | Role | Status | Link | Added) from being
+  // misread as having a Stage column. (test-all.mjs asserts this literal
+  // threshold is present.)
+  const stageLike = cols[1] === '' || cols[1] === '—' || /^S[12]$/i.test(cols[1]) || /^[\d.]+(?:\/5)?$/.test(cols[1]);
+  const hasStage = stageLike && cols.length >= 7;
 
   const score = cols[0] || '';
-  const adj = hasAdj ? (cols[1] || '') : '';
-  const companyIdx = hasAdj ? 2 : 1;      // Company sits right after Score(+Adj.)
+  // Only S1/S2 survive as a Stage; a migrated numeric Adj. is dropped (deprecated).
+  const stage = hasStage ? (/^S[12]$/i.test(cols[1]) ? cols[1].toUpperCase() : '') : '';
+  const companyIdx = hasStage ? 2 : 1;      // Company sits right after Score(+Stage)
   const company = cols[companyIdx] || '';
   const role = cols[companyIdx + 1] || '';
   const added = (li === lastIdx) ? '' : (cols[lastIdx] || '');
@@ -113,5 +118,5 @@ export function parseTableRow(line) {
   location = (location || '').replace(/\[View\].*/, '').trim();
   const cleanAdded = (added || '').replace(/\[View\].*/, '').trim();
 
-  return { score, adj, company, role, level, domain, location, url, status, added: cleanAdded };
+  return { score, stage, company, role, level, domain, location, url, status, added: cleanAdded };
 }

@@ -198,6 +198,21 @@ async function readBodyCapped(response) {
   return out;
 }
 
+// A specific job posting carries an ID in the PATH (/jobs/12345, /job/abc) OR in
+// the QUERY STRING (Greenhouse `gh_jid`, generic `jid`, Ashby `ashby_jid`, Lever
+// `lever_id`). The old check tested `pathname` only, so a posting whose ID lives
+// only in the query — e.g. `careers.example.com/jobs?gh_jid=123` redirecting to a
+// bare `/jobs` index — read as Live even though the role was gone. Read the whole URL.
+const JOB_ID_QUERY_KEYS = ['gh_jid', 'jid', 'ashby_jid', 'lever_id'];
+function urlHasJobId(u) {
+  if (/\/jobs?\/[^/]+/i.test(u.pathname || '')) return true;
+  for (const key of JOB_ID_QUERY_KEYS) {
+    const v = u.searchParams.get(key);
+    if (v && v.trim()) return true;
+  }
+  return false;
+}
+
 function isGenericCareersRedirect(originalUrl, finalUrl) {
   try {
     const orig = new URL(originalUrl);
@@ -207,9 +222,10 @@ function isGenericCareersRedirect(originalUrl, finalUrl) {
     const pathStripped = final.pathname.replace(/\/$/, '') || '/';
     const looksGeneric = GENERIC_CAREERS_PATHS.some((rx) => rx.test(pathStripped));
     if (looksGeneric) return true;
-    // Greenhouse/Lever specific: redirected from /jobs/12345 to /jobs (no ID)
-    const origHasJobId = /\/jobs?\/[^/]+/i.test(orig.pathname);
-    const finalHasJobId = /\/jobs?\/[^/]+/i.test(final.pathname);
+    // Redirected from a specific posting to one without an ID (path OR query).
+    // Catches /jobs/12345 → /jobs AND /jobs?gh_jid=123 → /jobs (ID only in query).
+    const origHasJobId = urlHasJobId(orig);
+    const finalHasJobId = urlHasJobId(final);
     if (origHasJobId && !finalHasJobId) return true;
     return false;
   } catch {
@@ -458,6 +474,7 @@ export const _internals = {
   AGGREGATOR_DOMAINS,
   isAggregatorUrl,
   isGenericCareersRedirect,
+  urlHasJobId,
   extractPostingAgeDays,
   classifyHttpLiveness,
   CACHE_TTL_MS,

@@ -183,81 +183,92 @@ if (splitSafe(reconcileSrc) && splitSafe(scorePublishSrc) && splitSafe(obsidianT
   fail('filter(Boolean) row-splitting reintroduced — blank Adj./Liveness cells will shift columns');
 }
 
-// Logic simulation — what counts as having an Adj. column. MUST stay in sync
-// with parseTableRow in obsidian-table.mjs.
-function hasAdjColumn(cols) {
-  const adjLike = cols[1] === '' || cols[1] === '—' || /^[\d.]+(?:\/5)?$/.test(cols[1]);
-  return adjLike && cols.length >= 7;
+// Logic simulation — what counts as having a Stage column. MUST stay in sync
+// with parseTableRow in obsidian-table.mjs. The second cell is a Stage column
+// when it is empty / '—' / an S1|S2 marker / or a legacy numeric Adj. score
+// (which migrates cleanly on one read).
+function hasStageColumn(cols) {
+  const stageLike = cols[1] === '' || cols[1] === '—' || /^S[12]$/i.test(cols[1]) || /^[\d.]+(?:\/5)?$/.test(cols[1]);
+  return stageLike && cols.length >= 7;
 }
 
-const adjFixtures = [
-  // [description, table-line, expected-hasAdj]
+const stageFixtures = [
+  // [description, table-line, expected-hasStage]
   [
-    'Actioned row with non-blank Adj. (7 cols) — the original bug case',
+    'Actioned row with S2 stage (7 cols)',
+    '| 4.4 | S2 | Schneider Electric | Director, AI Ops | 🟢 Live | [View](https://example.com/x) | — |',
+    true,
+  ],
+  [
+    'Actioned row with legacy numeric Adj. (7 cols) — migrates cleanly',
     '| 4.4 | 2.8 | Schneider Electric | Director, AI Ops | 🟢 Live | [View](https://example.com/x) | — |',
     true,
   ],
   [
-    'Full row with non-blank Adj. + Liveness (10 cols)',
-    '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 🟢 Live | 2026-05-17 |',
+    'Full row with S1 stage + Liveness (10 cols)',
+    '| 4.4 | S1 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 🟢 Live | 2026-05-17 |',
     true,
   ],
   [
-    'Full row with non-blank Adj. (9 cols)',
-    '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 2026-05-17 |',
-    true,
-  ],
-  [
-    // With interior empties preserved, a blank Adj. row keeps its 10 cols and
-    // col[1] === '' is correctly recognized as the (empty) Adj. column. Under
-    // the old filter(Boolean) split this collapsed to hasAdj=false.
-    'Full row with BLANK Adj. + Liveness (10 cols) — now correctly hasAdj',
+    // Interior empties preserved: a blank Stage row keeps its 10 cols and
+    // col[1] === '' is recognized as the (empty) Stage column. Under the old
+    // filter(Boolean) split this collapsed to false.
+    'Full row with BLANK Stage + Liveness (10 cols)',
     '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | [View](https://example.com/z) | 🔲 New | 🟢 Live (2026-05-25) | 2026-05-20 14:30 |',
     true,
   ],
   [
-    'Legacy row, no Adj. column (Company in col[1])',
+    'Legacy row, no Stage column (Company in col[1])',
     '| 4.4 | Datadog | Director PM | Director+ | AI/ML | [View](https://example.com/y) | 🔲 New | 2026-05-17 |',
     false,
   ],
 ];
 
-for (const [name, line, expected] of adjFixtures) {
+for (const [name, line, expected] of stageFixtures) {
   const cols = splitTableRow(line);
-  const got = hasAdjColumn(cols);
+  const got = hasStageColumn(cols);
   if (got === expected) {
-    pass(`hasAdj fixture: ${name}`);
+    pass(`hasStage fixture: ${name}`);
   } else {
-    fail(`hasAdj fixture: ${name} — got ${got}, expected ${expected}`);
+    fail(`hasStage fixture: ${name} — got ${got}, expected ${expected}`);
   }
 }
 
 // splitTableRow must keep interior empties (the core of the column-shift fix).
-const blankAdjRow = '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | [View](https://job-boards.greenhouse.io/anthropic/jobs/123) | 🔲 New | 🟢 Live (2026-05-25) | 2026-05-20 14:30 |';
-const cols10 = splitTableRow(blankAdjRow);
+const blankStageRow = '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | [View](https://job-boards.greenhouse.io/anthropic/jobs/123) | 🔲 New | 🟢 Live (2026-05-25) | 2026-05-20 14:30 |';
+const cols10 = splitTableRow(blankStageRow);
 if (cols10.length === 10 && cols10[1] === '') {
-  pass('splitTableRow preserves interior blank Adj. cell (10 cols, col[1] empty)');
+  pass('splitTableRow preserves interior blank Stage cell (10 cols, col[1] empty)');
 } else {
   fail(`splitTableRow dropped interior blank: length=${cols10.length}, col[1]="${cols10[1]}"`);
 }
 
-// Core regression: blank Adj. + populated Liveness survives parse → write →
-// parse with Added intact, Adj. still blank, Status correct, and no shift.
-const p1 = parseTableRow(blankAdjRow);
+// Core regression: blank Stage + populated Liveness survives parse → write →
+// parse with Added intact, Stage still blank, Status correct, and no shift.
+const p1 = parseTableRow(blankStageRow);
 const liveness = '🟢 Live (2026-05-25)';
 const reserialize = (r) =>
-  `| ${r.score} | ${r.adj || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | ${r.location || '📍 Unknown'} | [View](${r.url}) | ${r.status} | ${liveness} | ${r.added} |`;
+  `| ${r.score} | ${r.stage || ''} | ${r.company} | ${r.role} | ${r.level} | ${r.domain} | ${r.location || '📍 Unknown'} | [View](${r.url}) | ${r.status} | ${liveness} | ${r.added} |`;
 const p2 = p1 ? parseTableRow(reserialize(p1)) : null;
 
-const okFirst = p1 && p1.adj === '' && p1.added === '2026-05-20 14:30' &&
+const okFirst = p1 && p1.stage === '' && p1.added === '2026-05-20 14:30' &&
   p1.status === '🔲 New' && p1.score === '4.0 🏆 T1' && p1.company === 'Anthropic' &&
   p1.url === 'https://job-boards.greenhouse.io/anthropic/jobs/123';
-const stable = p2 && p2.adj === p1.adj && p2.added === p1.added && p2.status === p1.status &&
+const stable = p2 && p2.stage === p1.stage && p2.added === p1.added && p2.status === p1.status &&
   p2.company === p1.company && p2.url === p1.url && p2.role === p1.role;
 if (okFirst && stable) {
-  pass('Blank-Adj + Liveness row survives parse→write→parse (no column shift)');
+  pass('Blank-Stage + Liveness row survives parse→write→parse (no column shift)');
 } else {
-  fail(`Blank-Adj round-trip broke: p1=${JSON.stringify(p1)} p2=${JSON.stringify(p2)}`);
+  fail(`Blank-Stage round-trip broke: p1=${JSON.stringify(p1)} p2=${JSON.stringify(p2)}`);
+}
+
+// S2 stage marker survives a round-trip (new schema).
+const s2Row = '| 4.2 ⭐ T2 | S2 | Glean | Head of Product | Director+ | AI/ML | 🌐 Remote | [View](https://job-boards.greenhouse.io/glean/jobs/9) | 🔲 New | 🟢 Live (2026-07-11) | 2026-07-11 09:00 |';
+const ps2 = parseTableRow(s2Row);
+if (ps2 && ps2.stage === 'S2' && ps2.company === 'Glean' && ps2.score === '4.2 ⭐ T2' && ps2.added === '2026-07-11 09:00') {
+  pass('S2 Stage marker parses (Score/Company/Added aligned)');
+} else {
+  fail(`S2 Stage row parse broke: ${JSON.stringify(ps2)}`);
 }
 
 // Legacy 10-col row (no Location column) must still parse, with location === ''.
@@ -271,24 +282,24 @@ if (p1 && p1.location === '') {
 // Adj. and Added — lands correctly for each shape the writer now emits.
 const schemaFixtures = [
   {
-    name: 'Full + Location + Liveness (11 cols)',
+    name: 'Full + legacy numeric Adj → migrates to empty Stage (11 cols)',
     line: '| 4.4 | 3.8 | Datadog | Director PM | Director+ | AI/ML | 🌐 Remote | [View](https://example.com/y) | 🔲 New | 🟢 Live (2026-07-01) | 2026-07-01 09:00 |',
-    expect: { score: '4.4', adj: '3.8', company: 'Datadog', role: 'Director PM', level: 'Director+', domain: 'AI/ML', location: '🌐 Remote', status: '🔲 New', added: '2026-07-01 09:00' },
+    expect: { score: '4.4', stage: '', company: 'Datadog', role: 'Director PM', level: 'Director+', domain: 'AI/ML', location: '🌐 Remote', status: '🔲 New', added: '2026-07-01 09:00' },
   },
   {
-    name: 'Full + BLANK Adj + Location (11 cols)',
+    name: 'Full + BLANK Stage + Location (11 cols)',
     line: '| 4.0 🏆 T1 |  | Anthropic | Head of Product | Director+ | AI/ML | 🏙️ Hybrid (Seattle metro) | [View](https://example.com/z) | 🔲 New | 🟢 Live (2026-07-01) | 2026-07-01 09:00 |',
-    expect: { adj: '', company: 'Anthropic', level: 'Director+', location: '🏙️ Hybrid (Seattle metro)', status: '🔲 New', added: '2026-07-01 09:00' },
+    expect: { stage: '', company: 'Anthropic', level: 'Director+', location: '🏙️ Hybrid (Seattle metro)', status: '🔲 New', added: '2026-07-01 09:00' },
   },
   {
     name: 'Actioned + Location + Liveness (9 cols)',
     line: '| 4 ⭐ T2 |  | Figma | Director, Product | ✅ Applied | 🏢 Onsite | [View](https://example.com/f) | 🟢 Live (2026-07-01) | 2026-05-28 |',
-    expect: { adj: '', company: 'Figma', role: 'Director, Product', status: '✅ Applied', location: '🏢 Onsite', added: '2026-05-28' },
+    expect: { stage: '', company: 'Figma', role: 'Director, Product', status: '✅ Applied', location: '🏢 Onsite', added: '2026-05-28' },
   },
   {
     name: 'Weak/Skip + Location, no Status (9 cols)',
     line: '| 2.5 |  | Acme | Senior PM | Senior PM | Data | 📍 Unknown | [View](https://example.com/a) | 2026-06-01 |',
-    expect: { adj: '', company: 'Acme', level: 'Senior PM', location: '📍 Unknown', status: '🔲 New', added: '2026-06-01' },
+    expect: { stage: '', company: 'Acme', level: 'Senior PM', location: '📍 Unknown', status: '🔲 New', added: '2026-06-01' },
   },
 ];
 
@@ -554,6 +565,111 @@ try {
   }
 } catch (e) {
   fail(`Liveness HTTP tests crashed: ${e.message}`);
+}
+
+// ── 5b. SCORING MODEL V2 — gates, level-gate, weighted score ─────
+//
+// The five real roles that motivated Scoring Model V2, plus the unit tests from
+// the implementation spec. Gates run BEFORE scoring; a hard skip drops/quarantines
+// and can never be out-competed by a strong title.
+
+console.log('\n5b. Scoring Model V2 (gates + weighted score)');
+
+try {
+  const sp = await import(pathToFileURL(join(ROOT, 'score-and-publish.mjs')).href);
+  const { classifyLevel, evaluateRole, buildIndexes, computeScore, locationFromUrl } = sp;
+  const { _internals: liveInt } = await import(pathToFileURL(join(ROOT, 'liveness-http.mjs')).href);
+
+  // ---- Acceptance: the five known false positives ----
+  const five = [
+    { key: 'Goodwin', want: 'drop', gate: 'G3', job: { title: 'Director, Product AI and Platforms', company: 'Goodwin', url: 'https://www.jobleads.com/us/job/director-product-ai-platforms--washington--e1ce4038b1e5', location: '' } },
+    { key: 'Wayve', want: 'drop', gate: 'G4', job: { title: 'Staff Product Manager, Cloud Platform - AI Portal', company: 'Wayve', url: 'https://wayve.firststage.co/jobs?gh_jid=8562409002', location: 'London, United Kingdom' } },
+    { key: 'Dormont', want: 'quarantine', gate: 'G11', job: { title: 'Senior Marketing Operations Lead', company: 'Dormont Manufacturing Co', url: 'https://www.jobleads.com/us/job/sr-manager-marketing-operations--holmdel--e7209f273b16', location: 'Holmdel, New Jersey', jd: 'Own our HubSpot, Pardot, Salesloft and Gong martech stack.' } },
+    { key: 'Glean', want: 'drop', gate: 'G3', job: { title: 'Senior Manager, Lifecycle Marketing Operations', company: 'Glean', url: 'https://job-boards.greenhouse.io/glean/jobs/4012', location: 'Mountain View, CA', jd: 'Hybrid — 4 days a week in our SF or Mountain View office. Marketo administration.' } },
+    { key: 'Comscore', want: 'survive', gate: 'G10', job: { title: 'Senior Manager, Product Management – Data Integrations', company: 'Comscore', url: 'https://job-boards.greenhouse.io/comscore/jobs/778', location: 'Remote (US)', jd: 'Remote-eligible. Own the data integrations roadmap.' } },
+  ];
+  const idx = buildIndexes(five.map(f => f.job));
+  for (const { key, want, gate, job } of five) {
+    const ev = evaluateRole(job, idx);
+    const v = ev.gate.verdict;
+    const ok = want === 'survive' ? (v === 'pass' || v === 'cap_review') : v === want;
+    if (ok) pass(`${key}: ${want === 'survive' ? 'survives gates' : `${want} (${gate})`} — verdict=${v}`);
+    else fail(`${key}: expected ${want}, got verdict=${v} (reasons: ${ev.gate.reasons.join('; ')})`);
+  }
+
+  // Comscore G10: survives gates AND liveness marks it stale (expired/410).
+  const cev = evaluateRole(five[4].job, idx);
+  const staleByHttp = liveInt.classifyHttpLiveness({ url: five[4].job.url, status: 410 }).result === 'stale';
+  if ((cev.gate.verdict === 'pass' || cev.gate.verdict === 'cap_review') && staleByHttp) {
+    pass('Comscore survives gates and is marked STALE by liveness (G10)');
+  } else {
+    fail(`Comscore G10 path broke: verdict=${cev.gate.verdict}, staleByHttp=${staleByHttp}`);
+  }
+
+  // ---- Unit tests ----
+  // #1 — marketing-ops classified as martech, NOT a PM Sr Manager (the Glean bug)
+  const u1 = classifyLevel('Senior Manager, Lifecycle Marketing Operations');
+  if (u1.track === 'martech' && /MktOps/.test(u1.level)) pass('#1 classifyLevel(Glean title) = marketing-ops, not PM Sr Manager');
+  else fail(`#1 Glean title misclassified: ${JSON.stringify(u1)}`);
+
+  // #2 — demotion title drops
+  if (classifyLevel('Senior Product Manager, Growth').gate === 'drop') pass('#2 classifyLevel(Senior Product Manager, Growth) → gate:drop');
+  else fail('#2 Senior Product Manager, Growth should gate:drop');
+
+  // #3 — Staff/Principal/Director all pass, and level creates NO score differential
+  const passLevels = ['Staff Product Manager, AI', 'Principal PM', 'Director of Product'];
+  if (passLevels.every(t => classifyLevel(t).gate === 'pass')) pass('#3 Staff / Principal / Director all gate:pass');
+  else fail('#3 Staff/Principal/Director should all pass');
+  const mk = (t) => ({ title: t, company: 'Acme', url: 'https://job-boards.greenhouse.io/acme/jobs/1', location: 'Remote (US)', jd: 'AI product roadmap and platform strategy' });
+  const eqScores = ['Staff Product Manager, Data Platform', 'Principal Product Manager, Data Platform', 'Director, Product Management, Data Platform']
+    .map(t => computeScore(mk(t), { loc: { cls: 'Remote', metro: false }, level: classifyLevel(t) }).score_s1);
+  if (eqScores.every(s => s === eqScores[0])) pass(`#3 level does not rank — identical score ${eqScores[0]} across Staff/Principal/Director`);
+  else fail(`#3 level leaked into the score: ${eqScores.join(', ')}`);
+  const dimsKeys = Object.keys(computeScore(mk('Staff PM'), { loc: { cls: 'Remote', metro: false } }).dims);
+  if (!dimsKeys.includes('level')) pass('#3 computeScore has no level dimension');
+  else fail('#3 computeScore must not have a level dimension');
+
+  // #4 — URL-slug city parsing
+  if (locationFromUrl('https://www.jobleads.com/us/job/x--washington--e1ce4038b1e5').includes('washington')) pass('#4 locationFromUrl(--washington--) → washington');
+  else fail('#4 locationFromUrl should extract washington from a --city-- slug');
+
+  // #5 — liveness: job ID in the QUERY string (Wayve)
+  if (liveInt.isGenericCareersRedirect('https://x.co/jobs?gh_jid=123', 'https://x.co/jobs') === true) pass('#5 isGenericCareersRedirect(?gh_jid=123 → /jobs) → true');
+  else fail('#5 query-string job-ID redirect should be detected');
+
+  // #6 — no company-tier floor to 4.0
+  const weakAtTier1 = computeScore({ title: 'Product Manager', company: 'Anthropic', url: 'https://x', location: 'Remote (US)' }, { loc: { cls: 'Remote', metro: false }, level: classifyLevel('Product Manager') });
+  if (weakAtTier1.score_s1 < 4.0) pass(`#6 company tier cannot floor a score to 4.0 (tier-1 plain PM = ${weakAtTier1.score_s1})`);
+  else fail(`#6 company tier floored a weak role to ${weakAtTier1.score_s1}`);
+
+  // #7 — a role failing a gate never appears in Top Matches / Worth Reviewing
+  const cohort = [
+    { title: 'Senior Product Manager, Growth', company: 'BigCo', url: 'https://job-boards.greenhouse.io/bigco/jobs/1', location: 'Remote (US)' },                                // demotion → drop
+    { title: 'Principal Product Manager, AI Platform', company: 'Anthropic', url: 'https://job-boards.greenhouse.io/anthropic/jobs/2', location: 'Remote (US)', jd: 'AI product strategy roadmap platform evals agentic' }, // strong → APPLY
+  ];
+  const cidx = buildIndexes(cohort);
+  const evs = cohort.map(j => ({ title: j.title, ev: evaluateRole(j, cidx) }));
+  const active = evs.filter(e => e.ev.gate.verdict === 'pass' || e.ev.gate.verdict === 'cap_review');
+  const topOrReview = active.filter(e => e.ev.recommendation === '🟢 APPLY' || e.ev.recommendation === '🟡 REVIEW').map(e => e.title);
+  if (!topOrReview.some(t => /Senior Product Manager, Growth/.test(t)) && topOrReview.some(t => /Principal Product Manager, AI Platform/.test(t))) {
+    pass('#7 gated demotion role absent from Top Matches/Worth Reviewing; strong role present');
+  } else {
+    fail(`#7 gate-visibility invariant broke — topOrReview=${JSON.stringify(topOrReview)}`);
+  }
+
+  // G11 JD-hash: identical JD body under two employers → both quarantined
+  const jd = 'Manage HubSpot, Marketo, Salesforce lifecycle campaigns and attribution reporting for enterprise B2B.';
+  const dupA = { title: 'Marketing Operations Manager', company: 'Alpha Corp', url: 'https://a.com/jobs/1', location: 'Remote (US)', jd };
+  const dupB = { title: 'Marketing Operations Manager', company: 'Beta LLC', url: 'https://b.com/jobs/1', location: 'Remote (US)', jd };
+  const didx = buildIndexes([dupA, dupB]);
+  if (evaluateRole(dupA, didx).gate.verdict === 'quarantine' && evaluateRole(dupB, didx).gate.verdict === 'quarantine') {
+    pass('G11 JD-hash: identical JD under 2 employers → both quarantined');
+  } else {
+    fail('G11 JD-hash: duplicate JD across employers should quarantine both');
+  }
+
+} catch (e) {
+  fail(`Scoring Model V2 tests crashed: ${e.message}\n${(e.stack || '').split('\n').slice(0, 4).join('\n')}`);
 }
 
 // ── 4. DASHBOARD BUILD ──────────────────────────────────────────
