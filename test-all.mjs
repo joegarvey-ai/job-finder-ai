@@ -363,6 +363,26 @@ try {
     fail('Different job ID should not be flagged as generic redirect');
   }
 
+  // Job ID in the QUERY string (Greenhouse gh_jid): a redirect that drops it and
+  // lands on a bare /jobs index is stale — the ID lived in the query, not the path.
+  if (isGenericCareersRedirect(
+    'https://careers.example.com/jobs?gh_jid=123',
+    'https://careers.example.com/jobs'
+  ) === true) {
+    pass('Detects redirect that drops a query-string job ID (?gh_jid) to /jobs');
+  } else {
+    fail('Should detect redirect dropping a query-string job ID to bare /jobs');
+  }
+
+  if (isGenericCareersRedirect(
+    'https://boards.greenhouse.io/acme/jobs?gh_jid=1',
+    'https://boards.greenhouse.io/acme/jobs?gh_jid=2'
+  ) === false) {
+    pass('Redirect to a different query-string job ID is not a generic redirect');
+  } else {
+    fail('A final URL that still carries a query-string job ID should not be flagged');
+  }
+
   // ---- extractPostingAgeDays ----
 
   if (extractPostingAgeDays('Posted 14 days ago') === 14) {
