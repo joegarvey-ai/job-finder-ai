@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.2...career-ops-v1.9.3) (2026-07-12)
+
+
+### Bug Fixes
+
+* **scanner:** read query-string job IDs in liveness + scan tracked companies via ATS API ([e0e1555](https://github.com/joegarvey-ai/job-finder-ai/commit/e0e1555a6f151a2bc2b99264614c846bd00568e2))
+
 ## [1.9.2](https://github.com/joegarvey-ai/job-finder-ai/compare/career-ops-v1.9.1...career-ops-v1.9.2) (2026-07-05)
 
 
