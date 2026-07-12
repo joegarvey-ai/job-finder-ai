@@ -69,7 +69,7 @@ must_not_contain:
   - "missing block"
 
 # Free-text note explaining the case (not graded, just for humans)
-notes: "Strong AI PM match. Joe's archetypes should fire and score 4+."
+notes: "Strong AI PM match. The candidate's archetypes should fire and score 4+."
 ```
 
 All fields are optional. A case with only `notes` will always pass (useful for smoke-testing the pipeline).

@@ -5,7 +5,7 @@
 // Lever board at jobs.lever.co/{slug} has a hidden JSON endpoint:
 //   https://api.lever.co/v0/postings/{slug}?mode=json
 //
-// We maintain a discovery list of Lever slugs for companies in Joe's target domains,
+// We maintain a discovery list of Lever slugs for companies in common PM-leadership target domains,
 // skip any already tracked in portals.yml, and hit the JSON endpoint.
 
 import { readFileSync } from 'fs';

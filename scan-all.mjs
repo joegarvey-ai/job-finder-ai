@@ -124,10 +124,13 @@ async function main() {
   if (allNew.length === 0) {
     digest += `No new roles found today.\n`;
   } else {
-    digest += `| # | Company | Role | Source | Link |\n`;
-    digest += `|---|---------|------|--------|------|\n`;
+    digest += `| # | Company | Role | Location | Source | Link |\n`;
+    digest += `|---|---------|------|----------|--------|------|\n`;
     allNew.forEach((r, i) => {
-      digest += `| ${i + 1} | ${r.company} | ${r.title} | ${r.source} | [View](${r.url}) |\n`;
+      // Scrapers already extract a raw location (e.g. "Remote", "Seattle, WA");
+      // persist it so score-and-publish can classify Remote/Hybrid/Onsite/Unknown.
+      const loc = String(r.location || '').replace(/\|/g, '/').trim();
+      digest += `| ${i + 1} | ${r.company} | ${r.title} | ${loc} | ${r.source} | [View](${r.url}) |\n`;
     });
   }
 

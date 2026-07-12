@@ -27,7 +27,7 @@ function getTrackedSlugs() {
 }
 
 // Discovery list: Greenhouse companies NOT in portals.yml that might have PM leadership roles.
-// Curated for Joe's target domains: AI/ML, data platforms, MarTech, developer tools.
+// Curated for common PM-leadership target domains: AI/ML, data platforms, MarTech, developer tools.
 const DISCOVERY_SLUGS = [
   // AI / ML
   'anyscale', 'modal', 'replicate', 'together', 'fixie', 'adept',

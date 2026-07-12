@@ -126,28 +126,31 @@ const updatedLines = lines.map(line => {
 
   matchedCount++;
   const evalData = evalScores.get(url);
-  // Preserve interior empty cells (blank Adj.) — splitting with filter(Boolean)
-  // dropped them, which shifted columns and spliced a duplicate Adj. on rows
-  // whose Adj. was blank. See obsidian-table.mjs.
+  // Preserve interior empty cells (blank Stage) — splitting with filter(Boolean)
+  // dropped them, which shifted columns and spliced a duplicate column on rows
+  // whose second cell was blank. See obsidian-table.mjs.
   const cols = splitTableRow(line);
 
-  // Determine if this row already has an Adj. column (2nd col is empty, score-like, or '—').
-  // Threshold is >=7 because actioned rows are 7 cols when formatted with Adj.
-  // (Score | Adj. | Company | Role | Status | Link | Added). Using >=8 here would
-  // misclassify actioned rows as missing Adj. and splice a duplicate column.
-  const adjLike = cols[1] === '' || cols[1] === '—' || cols[1].match(/^[\d.]+(?:\/5)?$/);
-  const hasAdj = adjLike && cols.length >= 7;
+  // Scoring Model V2: the evaluation (S2) score becomes the ONE authoritative
+  // Score, and the Stage cell is marked S2 (there is no separate Adj. column any
+  // more). Detect the Stage column the same way parseTableRow does (empty / '—' /
+  // S1|S2 / legacy numeric Adj.). Threshold >=7 because actioned rows are 7 cols
+  // when they carry the Stage column; >=8 would misclassify them and splice a dup.
+  const stageLike = cols[1] === '' || cols[1] === '—' || /^S[12]$/i.test(cols[1]) || cols[1].match(/^[\d.]+(?:\/5)?$/);
+  const hasStage = stageLike && cols.length >= 7;
 
-  const currentAdj = hasAdj ? cols[1] : '';
-  const newAdj = `${evalData.score}`;
+  // Split the Score cell into its number + any trailing tier label (e.g. "🏆 T1").
+  const scoreParts = cols[0].match(/^\s*([\d.]+)?\s*(.*)$/) || [null, '', ''];
+  const surfaceScore = parseFloat(scoreParts[1]) || 0;
+  const label = (scoreParts[2] || '').trim();
+  const newScore = `${evalData.score}${label ? ' ' + label : ''}`.trim();
+  const currentStage = hasStage ? cols[1] : '';
 
-  if (currentAdj === newAdj) return line; // already reconciled
+  if (cols[0].trim() === newScore && currentStage.toUpperCase() === 'S2') return line; // already reconciled
 
-  // Extract surface score for change reporting
-  const surfaceScore = parseFloat(cols[0]) || 0;
   const surfaceTier = getTier(surfaceScore);
-  const adjTier = getTier(evalData.score);
-  const tierChanged = surfaceTier !== adjTier;
+  const s2Tier = getTier(evalData.score);
+  const tierChanged = surfaceTier !== s2Tier;
 
   changes.push({
     title: evalData.title,
@@ -156,28 +159,24 @@ const updatedLines = lines.map(line => {
     adjScore: evalData.score,
     gap: Math.round((evalData.score - surfaceScore) * 10) / 10,
     surfaceTier,
-    adjTier,
+    adjTier: s2Tier,
     tierChanged,
   });
 
-  if (hasAdj) {
-    // Update existing Adj. column
-    cols[1] = newAdj;
-  } else {
-    // Insert Adj. column after Score
-    cols.splice(1, 0, newAdj);
-  }
+  cols[0] = newScore;                     // authoritative Score := S2 eval score
+  if (hasStage) cols[1] = 'S2';           // mark Stage S2
+  else cols.splice(1, 0, 'S2');           // insert Stage column after Score
 
   updatedCount++;
   return '| ' + cols.join(' | ') + ' |';
 });
 
-// Also update header rows to include Adj. if they don't already
+// Also update header rows to include Stage if they don't already
 const finalLines = updatedLines.map(line => {
   if (!line.startsWith('|')) return line;
   // Header row detection: contains "Score" and "Company" but no [View]
-  if (line.includes('Score') && line.includes('Company') && !line.includes('[View]') && !line.includes('Adj.')) {
-    return line.replace('| Score |', '| Score | Adj. |');
+  if (line.includes('Score') && line.includes('Company') && !line.includes('[View]') && !line.includes('Stage')) {
+    return line.replace('| Score |', '| Score | Stage |');
   }
   // Separator row detection: all dashes
   if (line.match(/^\|[\s-|]+\|$/) && !line.includes('[View]')) {
@@ -199,7 +198,7 @@ if (DRY_RUN) {
     console.log('Changes:');
     for (const c of changes) {
       const tierNote = c.tierChanged ? ` ⚠️  ${c.surfaceTier} → ${c.adjTier}` : '';
-      console.log(`  ${c.title}: ${c.surfaceScore} → Adj. ${c.adjScore} (${c.gap >= 0 ? '+' : ''}${c.gap})${tierNote}`);
+      console.log(`  ${c.title}: ${c.surfaceScore} → S2 ${c.adjScore} (${c.gap >= 0 ? '+' : ''}${c.gap})${tierNote}`);
     }
   }
 } else {
@@ -212,7 +211,7 @@ if (DRY_RUN) {
     console.log('\nChanges:');
     for (const c of changes) {
       const tierNote = c.tierChanged ? ` ⚠️  ${c.surfaceTier} → ${c.adjTier}` : '';
-      console.log(`  ${c.title}: ${c.surfaceScore} → Adj. ${c.adjScore} (${c.gap >= 0 ? '+' : ''}${c.gap})${tierNote}`);
+      console.log(`  ${c.title}: ${c.surfaceScore} → S2 ${c.adjScore} (${c.gap >= 0 ? '+' : ''}${c.gap})${tierNote}`);
     }
   }
   console.log(`\nPublished to: ${OBSIDIAN_FILE}`);

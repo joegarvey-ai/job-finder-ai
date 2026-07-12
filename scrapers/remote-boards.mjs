@@ -6,7 +6,7 @@
 //   - We Work Remotely (weworkremotely.com) — HTML scrape
 //   - Otta (otta.com/jobs) — Playwright (SPA)
 //
-// All filtered for PM/Director/Marketing Ops roles per Joe's targeting.
+// All filtered for PM/Director/Marketing Ops roles.
 
 import { launchBrowser, newStealthPage, log } from './lib/common.mjs';
 

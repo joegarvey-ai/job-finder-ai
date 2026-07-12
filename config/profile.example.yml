@@ -81,8 +81,9 @@ cv:
 # Obsidian scanner table. Substrings are matched case-insensitively against
 # the company name, so "stripe" catches "Stripe Inc."
 #
-# If you omit this block, defaults reflect the original author's PM/AI/data
-# search — replace with your own target companies if you publish to Obsidian.
+# If you omit this block, the code ships only a minimal illustrative default
+# (not a real target list) — set your own target companies here if you publish
+# to Obsidian.
 #
 # scoring:
 #   company_tiers:
