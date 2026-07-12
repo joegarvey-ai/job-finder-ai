@@ -69,9 +69,15 @@ async function fetchBoard(slug) {
 
 export async function scan() {
   const tracked = getTrackedSlugs();
-  const slugsToScan = DISCOVERY_SLUGS.filter(s => !tracked.has(s));
+  // Scan tracked companies THROUGH the ATS API too. Previously they were excluded
+  // (`DISCOVERY_SLUGS.filter(s => !tracked.has(s))`), which perversely sent the
+  // highest-priority (tracked) companies down the location-blind career-page path
+  // while untracked companies got authoritative `j.location.name` from the API.
+  // Now both sets go through the API; the Set dedupes the overlap — so tracked
+  // companies also get a real location for downstream location filtering.
+  const slugsToScan = [...new Set([...DISCOVERY_SLUGS, ...tracked])];
 
-  log(SOURCE, `Scanning ${slugsToScan.length} Greenhouse boards (${tracked.size} already tracked, skipped).`);
+  log(SOURCE, `Scanning ${slugsToScan.length} Greenhouse boards (${tracked.size} tracked + ${DISCOVERY_SLUGS.length} discovery, deduped — tracked no longer skipped).`);
 
   const results = [];
   // Batch fetches 10 at a time to avoid overwhelming the API
