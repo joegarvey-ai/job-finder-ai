@@ -67,6 +67,11 @@ const AGGREGATOR_DOMAINS = new Set([
   'disabledperson.com',
   'jobleads.com',
   'virtualvocations.com',
+  // WeWorkRemotely is a re-poster, not an employer ATS: a dead listing serves a
+  // healthy-looking 200 (its category search page) at the same URL. Treat its 200s
+  // as unverifiable (unknown, capped below APPLY) — the dead checks + soft-404 still
+  // apply and can still mark a WWR listing stale.
+  'weworkremotely.com',
 ]);
 
 function isAggregatorUrl(input) {
@@ -321,13 +326,47 @@ function spaShellVisibleLength(body) {
   return count;
 }
 
+// Soft-404 detection. A dead listing on a re-poster (WeWorkRemotely is the
+// canonical case) returns HTTP 200 with a generic job-SEARCH page at the same
+// URL — no status error, no redirect, no removal phrase, body large enough to
+// clear the SPA-shell floor. The one thing that page LACKS is the role's own
+// title. So: extract the distinctive tokens of the expected title (domain nouns,
+// not generic role/seniority words that appear on any listing page) and, if the
+// title has enough signal AND none of those tokens survive in the body, the page
+// is no longer this posting → stale. Conservative on purpose: it fires only when
+// EVERY distinctive token is absent, so a live page whose wording drifted slightly
+// is never falsely marked stale (a false "stale" would drop a real role).
+const TITLE_STOPWORDS = new Set([
+  'senior', 'junior', 'staff', 'lead', 'principal', 'director', 'head', 'group',
+  'manager', 'management', 'product', 'marketing', 'operations', 'remote', 'hybrid',
+  'onsite', 'associate', 'vice', 'president', 'engineer', 'specialist', 'about',
+  'apply', 'careers', 'position', 'role', 'jobs', 'search',
+]);
+function significantTitleTokens(title) {
+  return [...new Set(
+    String(title || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      .filter((w) => w.length >= 5 && !TITLE_STOPWORDS.has(w))
+  )];
+}
+function titleMostlyAbsent(body, expectedTitle) {
+  const tokens = significantTitleTokens(expectedTitle);
+  if (tokens.length < 2) return false;        // too little signal to judge safely
+  const b = String(body || '').toLowerCase();
+  const present = tokens.filter((t) => b.includes(t)).length;
+  return present === 0;                         // none of the distinctive words survived
+}
+
 // Pure classifier — given an HTTP result, decide live/stale/unknown. Kept
 // separate from the fetch so the decision logic is unit-testable without a
 // network (mirrors classifyLiveness in liveness-core.mjs). Ordering matters:
-// the authoritative DEAD checks (status, generic redirect, removal phrases)
-// run first and apply even to aggregator URLs; the aggregator guard only
-// intercepts an otherwise-"live" 200.
-export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' }) {
+// the authoritative DEAD checks (status, generic redirect, removal phrases,
+// soft-404) run first and apply even to aggregator URLs; the aggregator guard
+// only intercepts an otherwise-"live" 200. `expectedTitle` enables the soft-404
+// check (optional — absent for callers that don't track the role title).
+export function classifyHttpLiveness({ url, status, finalUrl = url, body = '', expectedTitle = '' }) {
   if (status === 404 || status === 410) {
     return { result: 'stale', reason: `HTTP ${status}`, ageDays: null };
   }
@@ -362,6 +401,18 @@ export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' })
     };
   }
 
+  // Soft-404: 200 OK, substantial body, but the role title is gone — the page is
+  // now something else (a search/category listing). This is how WWR dead listings
+  // present. Runs before the aggregator guard so a dead WWR listing marks STALE
+  // rather than merely "unknown".
+  if (expectedTitle && titleMostlyAbsent(body, expectedTitle)) {
+    return {
+      result: 'stale',
+      reason: 'soft-404: page no longer contains the role title',
+      ageDays: extractPostingAgeDays(body),
+    };
+  }
+
   // Aggregator guard: a healthy 200 here is not proof the role is open. We've
   // already honored the dead checks above, so this never hides a confirmed
   // dead listing — it only declines to assert "live" for an unverifiable one.
@@ -380,7 +431,7 @@ export function classifyHttpLiveness({ url, status, finalUrl = url, body = '' })
   };
 }
 
-async function checkOne(url) {
+async function checkOne(url, expectedTitle = '') {
   try {
     const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS);
     const status = res.status;
@@ -388,15 +439,78 @@ async function checkOne(url) {
     // Only read the body for statuses where it informs the decision. 4xx/5xx
     // short-circuit in the classifier without needing it.
     const body = status >= 200 && status < 400 ? await readBodyCapped(res) : '';
-    return classifyHttpLiveness({ url, status, finalUrl, body });
+    return classifyHttpLiveness({ url, status, finalUrl, body, expectedTitle });
   } catch (err) {
     const msg = (err && err.message) ? err.message.split('\n')[0] : String(err);
     return { result: 'unknown', reason: `fetch error: ${msg}`, ageDays: null };
   }
 }
 
-export async function checkLiveness(urls, { verbose = false, skipCache = false } = {}) {
-  const uniqueUrls = Array.from(new Set(urls.filter(Boolean)));
+// An HTTP 'unknown' whose reason is a bot-block (403), a JS-only shell, a transient
+// fetch error, or an unverifiable aggregator 200 is exactly the case a real browser
+// can resolve (render → look for a visible Apply control vs. a dead/search page). A
+// bare 403 or an aggregator repost must NOT terminate as 'unknown' without a browser
+// attempt (RCA II RC-2).
+const BROWSER_ESCALATE_RE = /HTTP 403|SPA shell|fetch error|aggregator/i;
+const MAX_BROWSER_ESCALATIONS = 60;
+
+// Escalate eligible 'unknown' entries to Playwright (liveness-browser.mjs, which
+// already exists and was previously unwired). Mutates each entry in place so the
+// result is written back to the shared cache. All imports are dynamic and guarded
+// so an environment without Playwright installed simply keeps the HTTP verdict.
+async function escalateWithBrowser(eligible, { verbose }) {
+  if (!eligible.length) return { escalated: 0 };
+  let launchBrowser, newStealthPage, checkUrlLiveness;
+  try {
+    ({ launchBrowser, newStealthPage } = await import('./scrapers/lib/common.mjs'));
+    ({ checkUrlLiveness } = await import('./liveness-browser.mjs'));
+  } catch (err) {
+    if (verbose) console.log(`  (browser escalation unavailable: ${err.message.split('\n')[0]})`);
+    return { escalated: 0 };
+  }
+  const batch = eligible.slice(0, MAX_BROWSER_ESCALATIONS);
+  if (eligible.length > batch.length) {
+    console.log(`  ⚠️  browser escalation capped at ${MAX_BROWSER_ESCALATIONS}; ${eligible.length - batch.length} unknown(s) left un-escalated`);
+  }
+  let browser;
+  try {
+    browser = await launchBrowser({ stealth: true });
+  } catch (err) {
+    if (verbose) console.log(`  (browser launch failed — keeping HTTP verdicts: ${err.message.split('\n')[0]})`);
+    return { escalated: 0 };
+  }
+  let escalated = 0;
+  try {
+    const page = await newStealthPage(browser);
+    for (const { url, entry } of batch) {
+      try {
+        const b = await checkUrlLiveness(page, url);
+        const mapped = b.result === 'active' ? 'live' : b.result === 'expired' ? 'stale' : 'unknown';
+        entry.result = mapped;
+        entry.reason = `browser: ${b.reason}`;
+        entry.escalated = true;
+        escalated++;
+        if (verbose) console.log(`  ${iconFor(mapped)} browser ${mapped.padEnd(7)} ${url}\n           ${entry.reason}`);
+      } catch (err) {
+        if (verbose) console.log(`  (browser check failed for ${url}: ${err.message.split('\n')[0]})`);
+      }
+    }
+  } finally {
+    try { await browser.close(); } catch {}
+  }
+  return { escalated };
+}
+
+// items: an array of URL strings, or { url, expectedTitle } objects (the title
+// enables soft-404 detection). opts.browser (default true) toggles the Playwright
+// escalation of bot-blocked / SPA / errored unknowns.
+export async function checkLiveness(items, { verbose = false, skipCache = false, browser = true } = {}) {
+  const normalized = (items || [])
+    .map((it) => (typeof it === 'string' ? { url: it, expectedTitle: '' } : it))
+    .filter((it) => it && it.url);
+  const titleByUrl = new Map();
+  for (const { url, expectedTitle } of normalized) if (!titleByUrl.has(url)) titleByUrl.set(url, expectedTitle || '');
+  const uniqueUrls = Array.from(titleByUrl.keys());
   const cache = skipCache ? {} : loadCache();
   const now = Date.now();
   const results = new Map();
@@ -415,7 +529,7 @@ export async function checkLiveness(urls, { verbose = false, skipCache = false }
       continue;
     }
 
-    const result = await checkOne(url);
+    const result = await checkOne(url, titleByUrl.get(url));
     const entry = { ...result, checkedAt: now };
     cache[url] = entry;
     results.set(url, entry);
@@ -433,11 +547,24 @@ export async function checkLiveness(urls, { verbose = false, skipCache = false }
     }
   }
 
+  // Escalate bot-blocked / SPA-shell / errored unknowns to a real browser.
+  let escalated = 0;
+  if (browser) {
+    const eligible = [];
+    for (const url of uniqueUrls) {
+      const entry = results.get(url);
+      if (entry && entry.result === 'unknown' && !entry.escalated && BROWSER_ESCALATE_RE.test(entry.reason || '')) {
+        eligible.push({ url, entry });
+      }
+    }
+    ({ escalated } = await escalateWithBrowser(eligible, { verbose }));
+  }
+
   if (!skipCache) saveCache(cache);
 
   return {
     results,
-    stats: { total: uniqueUrls.length, checked, cacheHits },
+    stats: { total: uniqueUrls.length, checked, cacheHits, escalated },
   };
 }
 
@@ -477,6 +604,8 @@ export const _internals = {
   urlHasJobId,
   extractPostingAgeDays,
   classifyHttpLiveness,
+  titleMostlyAbsent,
+  significantTitleTokens,
   CACHE_TTL_MS,
   STALE_POSTING_AGE_DAYS,
 };

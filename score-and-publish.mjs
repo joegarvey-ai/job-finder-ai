@@ -27,6 +27,7 @@ import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
 import yaml from 'js-yaml';
 import { checkLiveness, formatLivenessCell } from './liveness-http.mjs';
+import { fetchJd } from './fetch-jd.mjs';
 import { parseTableRow, splitTableRow } from './obsidian-table.mjs';
 
 // Optional dotenv (so OBSIDIAN_VAULT_PATH can live in .env)
@@ -73,6 +74,24 @@ const FULL_MODE = process.argv.includes('--full');
 const RECONCILE_MODE = !process.argv.includes('--no-reconcile');
 const SKIP_LIVENESS = process.argv.includes('--skip-liveness');
 const VERBOSE_LIVENESS = process.argv.includes('--verbose-liveness');
+// --skip-jd-fetch: skip the JD-body fetch layer (fast local iteration). JD-
+// dependent gates (G6, G11 JD-hash, JD-body location, content_fit on JD text)
+// fall back to title-only — mirrors --skip-liveness.
+const SKIP_JD_FETCH = process.argv.includes('--skip-jd-fetch');
+// --no-liveness-browser: skip Playwright escalation of bot-blocked / SPA unknowns
+// in the APPLY/REVIEW liveness pass (default: escalate — a 403/SPA must get a
+// browser attempt before terminating as 'unknown').
+const NO_LIVENESS_BROWSER = process.argv.includes('--no-liveness-browser');
+// --jd-browser: also escalate the JD-body fetch to Playwright for thin/403 pages.
+// OFF by default — the ATS JSON APIs + JSON-LD cover first-party postings, and
+// aggregator shells intentionally yield no JD, so browser-rendering the bulk JD
+// fetch is rarely worth its cost. Liveness escalation (above) is separate.
+const JD_FETCH_BROWSER = process.argv.includes('--jd-browser');
+// Roles are JD-fetched only when they survive the cheap gates AND their provisional
+// (title-only) score reaches this floor — i.e. they would land >= REVIEW. Keeps the
+// fetch bounded to the roles that matter (~tens per scan, not ~1,100).
+const JD_FETCH_SCORE_FLOOR = 3.0;
+const MAX_JD_FETCHES = 220;   // hard ceiling; overflow is logged, never silent
 // --dry-run: compute + report the gate breakdown and new top-10 WITHOUT
 // overwriting the live Career_Ops_Scanner.md. Writes a preview file to data/.
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -121,6 +140,66 @@ function loadCompanyTiers() {
 }
 
 const COMPANY_TIERS = loadCompanyTiers();
+
+// ── Known-company universe + verified careers domains (Tasks 3 & 5) ─────────
+//
+// USER layer. Loaded from config/profile.yml (scoring.company_tiers,
+// scoring.careers_domains) and portals.yml (tracked_companies.careers_url +
+// additional_scan_targets). Used to (a) promote a first-party company careers
+// domain to T1 in sourceTier(), and (b) decide whether a T3-sourced employer is
+// a plausibly-real company or a suspect attribution (G11). System ships an EMPTY
+// universe — everything personal lives in the gitignored user files.
+const ATS_HOSTS = ['greenhouse.io', 'lever.co', 'ashbyhq.com', 'myworkdayjobs.com', 'workable.com'];
+function hostOf(url) { try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } }
+function isAtsHost(host) { return ATS_HOSTS.some((d) => host === d || host.endsWith('.' + d)); }
+
+function loadCareersUniverse() {
+  const domains = new Set();
+  const companies = new Set();
+  const addCompany = (c) => { const s = String(c || '').toLowerCase().trim(); if (s) companies.add(s); };
+  const addDomainFromUrl = (u) => { const h = hostOf(u); if (h && !isAtsHost(h)) domains.add(h); };
+
+  try {
+    const profilePath = join(ROOT, 'config', 'profile.yml');
+    if (existsSync(profilePath)) {
+      const profile = yaml.load(readFileSync(profilePath, 'utf8')) || {};
+      const ct = profile.scoring?.company_tiers || {};
+      for (const k of ['tier_1', 'tier_2', 'tier_3', 'strong']) (ct[k] || []).forEach(addCompany);
+      (profile.scoring?.careers_domains || []).forEach((d) => { const h = String(d || '').toLowerCase().trim(); if (h) domains.add(h.replace(/^www\./, '')); });
+      for (const t of (profile.additional_scan_targets || [])) { addCompany(t.company); if (t.career_page) addDomainFromUrl(t.career_page); }
+    }
+  } catch { /* generic defaults */ }
+  try {
+    const portalsPath = join(ROOT, 'portals.yml');
+    if (existsSync(portalsPath)) {
+      const portals = yaml.load(readFileSync(portalsPath, 'utf8')) || {};
+      for (const c of (portals.tracked_companies || [])) {
+        addCompany(c.name);
+        if (c.careers_url) addDomainFromUrl(c.careers_url);
+      }
+    }
+  } catch { /* generic defaults */ }
+  return { domains, companies: [...companies] };
+}
+
+const CAREERS_UNIVERSE = loadCareersUniverse();
+
+// A URL on a company's own verified careers host (from the user's universe) is a
+// first-party posting → T1-equivalent. Everything else (unknown domain) is NOT.
+function isKnownCareersDomain(url) {
+  const host = hostOf(url);
+  if (!host) return false;
+  for (const d of CAREERS_UNIVERSE.domains) if (host === d || host.endsWith('.' + d)) return true;
+  return false;
+}
+
+// True when an employer name matches a company in the known universe (substring,
+// case-insensitive) — e.g. "Snowflake Inc." matches "snowflake".
+function isKnownCompany(company) {
+  const c = String(company || '').toLowerCase().trim();
+  if (!c) return false;
+  return CAREERS_UNIVERSE.companies.some((k) => c.includes(k));
+}
 
 function getCompanyTier(company) {
   const c = company.toLowerCase();
@@ -265,16 +344,41 @@ function classifyLevel(title) {
   return { level: 'Other', gate: 'pass', track: 'other' };
 }
 
-// ── Source trust tiering (Task 2e) ─────────────────────────────────────────
+// ── Title ↔ JD reconciliation (Task 6 / RCA II RC-6) ────────────────────────
+// Aggregators inflate titles for SEO: "Head of Marketing Operations Remote" is
+// really the JD's own "Marketing Operations Manager" (a mid-level role). When the
+// JD page's OWN title implies a materially lower level (or flips the level gate to
+// drop), TRUST THE JD and re-classify from it. Returns { level, inflated }.
+const LEVEL_RANK = {
+  SKIP: 0, PM: 1, MktOps: 1, Other: 1, Lead: 2,
+  'Sr Manager': 3, 'Group PM': 3, Staff: 3, Principal: 3, 'MktOps Lead': 3, 'Director+': 4,
+};
+function reconcileLevel(scrapedTitle, jdTitle) {
+  const s = classifyLevel(scrapedTitle);
+  if (!jdTitle) return { level: s, inflated: false };
+  const j = classifyLevel(jdTitle);
+  const sRank = LEVEL_RANK[s.level] ?? 1;
+  const jRank = LEVEL_RANK[j.level] ?? 1;
+  const disagree = (j.gate === 'drop' && s.gate !== 'drop') || jRank < sRank;
+  return disagree ? { level: j, inflated: true } : { level: s, inflated: false };
+}
+
+// ── Source trust tiering — FAILS CLOSED (Task 3 / RCA II RC-3) ──────────────
+// The old default was T1 ("unknown domain = authoritative first-party"), which
+// silently trusted tealhq / ziprecruiter / a11yjobs / jobright. Now the default
+// is T3 (untrusted). A domain is promoted to T1 only when it is a known ATS
+// (greenhouse/lever/ashby/workday) OR a VERIFIED company careers host from the
+// user's own company universe. Everything else is T3 — this kills the aggregator
+// class permanently instead of extending a blocklist forever.
 function sourceTier(url) {
   const u = (url || '').toLowerCase();
   if (!u) return { tier: 3, label: 'T3' };
   if (SCORING.source_tiers.t1.some(d => u.includes(d))) return { tier: 1, label: 'T1' };
+  if (isKnownCareersDomain(url)) return { tier: 1, label: 'T1' };
   if (SCORING.source_tiers.t3.some(d => u.includes(d))) return { tier: 3, label: 'T3' };
   if (SCORING.source_tiers.t2.some(d => u.includes(d))) return { tier: 2, label: 'T2' };
-  // A company's own careers domain (not an aggregator, not a known board) → treat
-  // as T1-equivalent (authoritative first-party posting).
-  return { tier: 1, label: 'T1' };
+  // Unknown domain → UNTRUSTED. Absence of a known-trust signal is not trust.
+  return { tier: 3, label: 'T3' };
 }
 
 // International detector (G4). US states/DC + "remote (us)" are domestic; a
@@ -291,15 +395,57 @@ function isInternational(text) {
   return INTL_PLACES.some(p => new RegExp('\\b' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(t));
 }
 
-// Employer↔JD plausibility flag (G11, cheap half). A manufacturing / industrial
-// employer "posting" a software/martech/product role is the classic
-// fabricated-attribution signature.
+// ── G11 legitimacy — generalized (Task 5 / RCA II RC-5) ─────────────────────
+// The old check only fired on a narrow industrial-employer regex written for one
+// past incident. It missed the CLASS: aggregator "apply-service" shells that
+// repackage a real posting under a fake employer name (e.g. a "TryApplyNow" row
+// that is really a mid-level role at a legitimate nonprofit). The general rule:
+//   suspect if  (employer looks like an apply-service / aggregator shell)  OR
+//               (source is T3  AND  employer is neither a known company nor a
+//                plausibly-real employer name)  OR
+//               (industrial employer ↔ software role — kept as a sub-signal)  OR
+//               (identical JD body under >= 2 employer names — JD-hash, now live)
+
+// Apply-service / aggregator brand names that masquerade as the employer.
+const AGGREGATOR_SHELL = /^(?:try)?apply\b|apply\s?(?:now|here|jobs)|jobs?\s+via\b|\bjobget\b|\bjobgether\b|\bjooble\b|\bziprecruiter\b|\blensa\b|\bwhatjobs\b|\bjobleads\b|\btalent\.?com\b|hiring\s?now|talent\s?(?:pool|match|network)|\bstaffing\b|recruit(?:ing|ment)\s+(?:agency|partners?)/i;
+function isAggregatorShell(company) {
+  const c = String(company || '').toLowerCase().trim();
+  if (!c) return true;                    // an empty employer on a scraped row is itself suspect
+  return AGGREGATOR_SHELL.test(c);
+}
+
+// A "plausibly real employer" heuristic: a normal company name that is not an
+// aggregator shell and is not obvious junk. Deliberately permissive so an unknown
+// but real company on a T3 mirror is NOT over-flagged — only shells / junk are.
+function isPlausibleCompany(company) {
+  const c = String(company || '').trim();
+  if (c.length < 2) return false;
+  if (isAggregatorShell(c)) return false;
+  if (/^\W+$/.test(c)) return false;                        // punctuation-only
+  if (/\b(jobs?|careers?|hiring|apply|remote)\b/i.test(c) && c.split(/\s+/).length <= 2) return false; // "Remote Jobs", "Careers"
+  return /[a-z]/i.test(c);
+}
+
 const INDUSTRIAL_EMPLOYER = /manufactur|\bmfg\b|foundry|\bsteel\b|plumbing|connector|castings?|industrial supply|machining|fabricat/i;
 function employerRoleImplausible(company, title) {
   const c = (company || '').toLowerCase();
   const t = (title || '').toLowerCase();
   const softwareRole = /marketing operations|martech|saas|product manager|software|platform|hubspot|salesforce|pardot|marketo/.test(t);
   return INDUSTRIAL_EMPLOYER.test(c) && softwareRole;
+}
+
+// A real "same JD under N employers" fraud is small-scale (2–4 names). A JD-hash
+// shared by MANY companies is boilerplate/blocked-shell noise, not attribution
+// fraud — cap the ceiling so it can't over-quarantine legitimate roles.
+const JD_DUP_CEILING = 5;
+
+// Full suspect-attribution decision. srcTier lets a T3 source raise the bar.
+function isSuspectAttribution(company, title, srcTier, jdDupCount = 0) {
+  if (jdDupCount >= 2 && jdDupCount <= JD_DUP_CEILING) return true;   // same JD under a few employers
+  if (isAggregatorShell(company)) return true;              // "TryApplyNow", "Jobs via X", empty
+  if (employerRoleImplausible(company, title)) return true; // industrial ↔ software
+  if (srcTier === 3 && !isKnownCompany(company) && !isPlausibleCompany(company)) return true;
+  return false;
 }
 
 // ── Domain fit (0–5) ───────────────────────────────────────────────────────
@@ -326,6 +472,15 @@ function getRecommendation(score) {
   return '⚪ SKIP';
 }
 
+// Fail-closed liveness floor (RCA II governing principle): a role may hold an
+// APPLY-tier effective score (>=4.0) ONLY when liveness is 'live'. Anything else
+// — 'unknown', 'stale', or an absent check — caps the effective score at 3.9 so
+// an unverifiable role can never sit in APPLY. Pure, so the invariant is testable.
+const REVIEW_MAX = 3.9;
+function livenessFloor(effectiveScore, livenessResult) {
+  return livenessResult === 'live' ? effectiveScore : Math.min(effectiveScore, REVIEW_MAX);
+}
+
 // ── GATES — run BEFORE scoring (Task 2b) ───────────────────────────────────
 // job: { title, company, url, location (resolved raw), jd? , comp? }
 // ctx: { loc: {cls, metro, resolved}, level, src, jdDupCompanies:Set, t1Index:Set }
@@ -339,6 +494,10 @@ function applyGates(job, ctx) {
   // Geographic policy is injectable (ctx.geo) so the gate logic is testable
   // without an ambient profile.yml; falls back to the module-level GEO in production.
   const geo = ctx.geo || GEO;
+  // Comp floor is likewise injectable via ctx.geo.compFloor (a number) — CI has no
+  // profile.yml so SCORING.comp_floor defaults to 0; injecting keeps the G2 fixture
+  // deterministic without hardcoding a comp figure in a tracked file.
+  const compFloor = (geo && typeof geo.compFloor === 'number') ? geo.compFloor : SCORING.comp_floor;
   const jdText = job.jd || '';
   const haystack = `${job.title || ''} ${jdText}`;
   let verdict = 'pass';
@@ -354,8 +513,8 @@ function applyGates(job, ctx) {
   let compSource = 'unknown';
   if (typeof job.comp === 'number' && Number.isFinite(job.comp)) {
     compSource = src.tier === 3 ? 'estimate' : 'employer';
-    if (compSource === 'employer' && job.comp < SCORING.comp_floor) {
-      escalate('drop'); reasons.push(`G2 comp $${job.comp} < floor $${SCORING.comp_floor}`);
+    if (compSource === 'employer' && job.comp < compFloor) {
+      escalate('drop'); reasons.push(`G2 comp $${job.comp} < floor $${compFloor}`);
     }
   } else {
     flags.push('⚠️ comp unverified');
@@ -366,7 +525,8 @@ function applyGates(job, ctx) {
   // role). A suspect posting's self-reported facts —
   // including its location — are untrusted, so we QUARANTINE for human review
   // rather than letting its (possibly fabricated) location silently DROP it.
-  const suspect = (ctx.jdDupCompanies && ctx.jdDupCompanies.size >= 2) || employerRoleImplausible(job.company, job.title);
+  const jdDupCount = ctx.jdDupCompanies ? ctx.jdDupCompanies.size : 0;
+  const suspect = isSuspectAttribution(job.company, job.title, src.tier, jdDupCount);
   if (suspect) { escalate('quarantine'); reasons.push('G11 suspect attribution'); flags.push('⚠️ suspect attribution'); }
 
   // Location gates — active only under remote_only, and skipped for suspect rows
@@ -593,24 +753,63 @@ function classifyLocation(rawStrings) {
 // Full US state names (+ DC) — digests carry these rather than 2-letter codes.
 const US_STATE_NAMES = /\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|west virginia|wisconsin|wyoming|district of columbia)\b/i;
 
-// resolveLocation(job) — precedence order (Task 2d): ATS-API location →
-// JSON-LD → URL slug → JD body. Location is a REQUIRED field for publication:
-// when nothing resolves to a concrete class, the row is quarantined (G5), never
-// published above REVIEW, so an unverified role can't top the APPLY list.
+// resolveLocation(job) — WEIGHTED BY SOURCE CONFIDENCE (Task 4 / RCA II RC-4).
+// The old version treated an aggregator's "Remote" string identically to a
+// Greenhouse location.name, so bad data beat no data (e.g. an aggregator digest
+// asserts "Remote" while the JD page says a specific metro / Hybrid). Now each
+// signal carries a confidence:
+//
+//   high   — ATS API location.name, JSON-LD jobLocation / jobLocationType
+//   medium — JD body ("hybrid" / "N days a week in" / "City, ST"), URL slug
+//   low    — aggregator/scraper digest string only, or the title
+//
+// The highest-confidence signal that yields a concrete class wins. A LOW-only
+// location is treated as UNRESOLVED → G5 quarantine, never published as a
+// confident 🌐 Remote. Returns { cls, metro, confidence, source, raw, resolved }.
+const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1, none: 0 };
 function resolveLocation(job) {
-  const signals = [];
-  if (job.location) signals.push(String(job.location));            // 1. ATS API / scraper
-  if (job.jsonldLocation) signals.push(String(job.jsonldLocation)); // 2. JSON-LD (when page fetched)
-  signals.push(...locationFromUrl(job.url));                        // 3. URL slug
-  if (job.jd) {                                                     // 4. JD body
-    const m = String(job.jd).match(/hybrid|on-?site|in-person|in office|\d+\s*days?\s+a\s+week\s+in/i);
-    if (m) signals.push(m[0]);
-    const cityState = String(job.jd).match(/\b[A-Z][a-zA-Z.]+(?:\s[A-Z][a-zA-Z.]+)*,\s*[A-Z]{2}\b/);
-    if (cityState) signals.push(cityState[0]);
+  const src = sourceTier(job.url);
+  const signals = []; // { text, confidence, source }
+
+  // HIGH — authoritative structured location.
+  if (job.jsonldLocationType && /telecommute|remote/i.test(String(job.jsonldLocationType)))
+    signals.push({ text: 'remote', confidence: 'high', source: 'jsonld-type' });
+  if (job.jsonldLocation) signals.push({ text: String(job.jsonldLocation), confidence: 'high', source: 'jsonld' });
+  if (job.atsLocation) signals.push({ text: String(job.atsLocation), confidence: 'high', source: 'ats' });
+  else if (job.location && src.tier === 1) signals.push({ text: String(job.location), confidence: 'high', source: 'ats-inferred' });
+
+  // MEDIUM — JD body + URL slug.
+  if (job.jd) {
+    const jd = String(job.jd);
+    const m = jd.match(/hybrid|on-?site|in-person|in office|\d+\s*days?\s+a\s+week\s+in|fully remote|remote-first|work from home/i);
+    if (m) signals.push({ text: m[0], confidence: 'medium', source: 'jd-body' });
+    const cityState = jd.match(/\b[A-Z][a-zA-Z.]+(?:\s[A-Z][a-zA-Z.]+)*,\s*[A-Z]{2}\b/);
+    if (cityState) signals.push({ text: cityState[0], confidence: 'medium', source: 'jd-body' });
   }
-  if (job.title) signals.push(String(job.title));                  // title may carry "(Remote)"
-  const { cls, metro } = classifyLocation(signals);
-  return { cls, metro, raw: signals.filter(Boolean).join(' | '), resolved: cls !== 'Unknown' };
+  for (const s of locationFromUrl(job.url)) signals.push({ text: s, confidence: 'medium', source: 'url-slug' });
+
+  // LOW — raw digest string on a non-ATS source, and the title.
+  if (job.location && src.tier !== 1 && !job.atsLocation) signals.push({ text: String(job.location), confidence: 'low', source: 'digest' });
+  if (job.title) signals.push({ text: String(job.title), confidence: 'low', source: 'title' });
+
+  let best = null; // { cls, metro, confidence, source }
+  for (const s of signals) {
+    const { cls, metro } = classifyLocation([s.text]);
+    if (cls === 'Unknown') continue;
+    const better = !best
+      || CONFIDENCE_RANK[s.confidence] > CONFIDENCE_RANK[best.confidence]
+      // within a tier, a concrete Hybrid/Onsite beats a bare "Remote" — an
+      // over-eager remote string must not hide a real on-site/hybrid requirement.
+      || (CONFIDENCE_RANK[s.confidence] === CONFIDENCE_RANK[best.confidence] && best.cls === 'Remote' && cls !== 'Remote');
+    if (better) best = { cls, metro, confidence: s.confidence, source: s.source };
+  }
+
+  const raw = signals.map((s) => s.text).filter(Boolean).join(' | ');
+  if (!best) return { cls: 'Unknown', metro: false, confidence: 'none', source: 'none', raw, resolved: false };
+  // Only medium/high confidence counts as RESOLVED. A low-confidence-only string
+  // (aggregator digest / title) is UNRESOLVED → G5 quarantine.
+  const resolved = best.confidence === 'high' || best.confidence === 'medium';
+  return { cls: best.cls, metro: best.metro, confidence: best.confidence, source: best.source, raw, resolved };
 }
 
 function formatLocationCell(cls, metro) {
@@ -740,36 +939,43 @@ function gatherNewRoles() {
 function buildIndexes(jobs) {
   const jdHashToCompanies = new Map(); // JD-body hash → Set(company)      (G11)
   const t1Keys = new Set();            // `company|title` of T1 ATS postings (G12)
+  const addT1 = (j) => t1Keys.add(`${String(j.company || '').toLowerCase().trim()}|${String(j.title || '').toLowerCase().trim()}`);
   for (const j of jobs) {
     if (j.jd) {
       const norm = String(j.jd).replace(/\s+/g, ' ').trim().toLowerCase();
-      if (norm) {
+      // Only hash SUBSTANTIVE JD bodies. A short/boilerplate string would collide
+      // across unrelated roles and produce spurious G11 duplicate-employer hits.
+      if (norm && norm.length >= 300) {
         const h = createHash('sha1').update(norm).digest('hex');
         if (!jdHashToCompanies.has(h)) jdHashToCompanies.set(h, new Set());
         jdHashToCompanies.get(h).add(String(j.company || '').toLowerCase().trim());
         j._jdHash = h;
       }
     }
-    if (sourceTier(j.url).tier === 1) {
-      t1Keys.add(`${String(j.company || '').toLowerCase().trim()}|${String(j.title || '').toLowerCase().trim()}`);
-    }
+    // A role IS a T1 canonical if its own URL is T1, OR (Task 1) its fetched JD
+    // pointed at a T1 ATS canonical/apply link — that's how a T3 mirror resolves
+    // to the real first-party posting (G12), e.g. a WWR repost of a Greenhouse role.
+    if (sourceTier(j.url).tier === 1) addT1(j);
+    if (j.canonicalUrl && sourceTier(j.canonicalUrl).tier === 1) addT1(j);
   }
   return { jdHashToCompanies, t1Keys };
 }
 
 // resolveLocation → applyGates → computeScore for one role. Pure given `idx`.
 function evaluateRole(job, idx = { jdHashToCompanies: new Map(), t1Keys: new Set() }, evalScore, geo) {
-  const level = classifyLevel(job.title);
+  const rec = reconcileLevel(job.title, job.jdTitle);   // Task 6 — trust the JD's own title
+  const level = rec.level;
   const loc = resolveLocation(job);
   const src = sourceTier(job.url);
   const jdDupCompanies = job._jdHash ? idx.jdHashToCompanies.get(job._jdHash) : null;
   const gate = applyGates(job, { loc, level, src, jdDupCompanies, t1Index: idx.t1Keys, geo });
+  if (rec.inflated) gate.flags.push(`⚠️ title inflated (source: ${src.label})`);
   const scored = computeScore(job, { loc, level, compSource: gate.compSource, evalScore });
   // Quarantine / cap_review may NOT sit in APPLY — cap the effective score at
   // REVIEW-max so an unverified/off-track role can never top the list.
   let effective = scored.score;
   if (gate.verdict === 'quarantine' || gate.verdict === 'cap_review') effective = Math.min(effective, 3.9);
-  return { level, loc, src, gate, scored, effective, recommendation: getRecommendation(effective) };
+  return { level, loc, src, gate, scored, effective, inflated: rec.inflated, recommendation: getRecommendation(effective) };
 }
 
 // ── Main ──
@@ -802,8 +1008,58 @@ async function main() {
     if (existingRows.has(url)) continue;
     jobList.push({ title: role.title, company: role.company, url, location: locationSignalFor(url, role.location) });
   }
-  const idx = buildIndexes(jobList);
   const jobByUrl = new Map(jobList.map(j => [j.url, j]));
+
+  // ── JD-body fetch (Task 1 / RCA II RC-1) — two-pass evaluation ─────────────
+  // Pass 1 (cheap, title-only): gate + provisionally score every candidate. Then
+  // fetch the JD ONLY for roles that survive the cheap gates and would land >=
+  // REVIEW (score >= JD_FETCH_SCORE_FLOOR). This turns G6, G11 JD-hash, JD-body
+  // location, content_fit, and title reconciliation from dead code into live
+  // signals for the roles that matter — bounded to tens of fetches, not ~1,100.
+  let jdStats = null;
+  if (!SKIP_JD_FETCH) {
+    const cheapIdx = buildIndexes(jobList);
+    const survivors = [];
+    for (const job of jobList) {
+      const evalScore = (RECONCILE_MODE && evalScores.has(job.url)) ? evalScores.get(job.url).score : undefined;
+      const ev = evaluateRole(job, cheapIdx, evalScore);
+      // Not cheaply dropped AND would reach REVIEW — INCLUDES G5-quarantined roles,
+      // whose location a JD/ATS fetch can resolve (the de-quarantine / promotion case).
+      if (ev.gate.verdict !== 'drop' && ev.scored.score >= JD_FETCH_SCORE_FLOOR) survivors.push({ job, score: ev.scored.score });
+    }
+    survivors.sort((a, b) => b.score - a.score);
+    const toFetch = survivors.slice(0, MAX_JD_FETCHES);
+    if (survivors.length > toFetch.length) {
+      console.log(`⚠️  ${survivors.length} roles qualify for JD fetch; capping at ${MAX_JD_FETCHES} (raise MAX_JD_FETCHES if intended).`);
+    }
+    console.log(`\nFetching JD bodies for ${toFetch.length} role(s) surviving cheap gates ≥ ${JD_FETCH_SCORE_FLOOR}...`);
+    const bySource = {};
+    let fetched = 0, withJd = 0, withLoc = 0;
+    for (const { job } of toFetch) {
+      try {
+        const f = await fetchJd(job.url, { browser: JD_FETCH_BROWSER });
+        job.jd = f.jd || '';
+        job.jsonldLocation = f.jsonldLocation || '';
+        job.jsonldLocationType = f.jsonldLocationType || '';
+        job.atsLocation = f.atsLocation || '';
+        job.canonicalUrl = f.canonicalUrl || '';
+        job.jdTitle = f.title || '';
+        job.httpStatus = f.httpStatus || 0;
+        bySource[f.source] = (bySource[f.source] || 0) + 1;
+        fetched++;
+        if (job.jd) withJd++;
+        if (job.atsLocation || job.jsonldLocation) withLoc++;
+      } catch {
+        bySource.error = (bySource.error || 0) + 1;
+      }
+    }
+    jdStats = { eligible: survivors.length, fetched, withJd, withLoc, bySource };
+    console.log(`JD fetch: ${fetched} fetched — ${withJd} with JD text, ${withLoc} with authoritative location. Sources: ${Object.entries(bySource).map(([k, v]) => `${k}:${v}`).join(', ') || '—'}`);
+  }
+
+  // Final indexes reflect the fetched JD bodies (JD-hash dedup) + any T1 canonical
+  // links surfaced from the JD (T3→T1 resolution). Evaluation below runs against these.
+  const idx = buildIndexes(jobList);
 
   const finalRows = [];
   let newCount = 0, rescoredCount = 0, preservedCount = 0, reconciledCount = 0;
@@ -884,28 +1140,83 @@ async function main() {
     newCount++;
   }
 
-  // ── Liveness (G10): active APPLY/REVIEW open rows only. Stale → Closed. ──
+  // ── Liveness (G10) — FAILS CLOSED (Task 2 / RCA II RC-2) ──────────────────
+  // Active APPLY/REVIEW open rows only. Governing principle: a gate with no
+  // evidence fails CLOSED. So:
+  //   • stale  → ❌ Closed (unchanged).
+  //   • unknown → may NOT publish above REVIEW: cap the effective score at 3.9,
+  //               flag "❓ unverified". (Old behavior: unknown published freely —
+  //               that's how 19/20 rows were bot-blocked aggregators.)
+  //   • A role enters APPLY (≥4.0) ONLY if liveness is 'live'. No exceptions.
+  // expectedTitle is passed so the checker can catch soft-404s (WWR dead listings).
   let livenessStats = null;
+  const capUnverified = (row, note) => {
+    row._effectiveScore = livenessFloor(row._effectiveScore, 'unknown');
+    row.recommendation = getRecommendation(row._effectiveScore);
+    if (!/❓/.test(row.locationLabel || '')) row.locationLabel = `${row.locationLabel || ''} ❓ ${note}`.trim();
+  };
+  const markClosed = (row, entry) => {
+    const originalAdded = (row.added || '').split(' (stale:')[0].trim();
+    row.added = `${originalAdded} (stale: ${entry.reason})`;
+    row.status = '❌ Closed';
+    row.recommendation = '❌ Closed';
+    row._locked = true;
+  };
   if (!SKIP_LIVENESS) {
-    const toCheck = finalRows.filter(r => !r._locked &&
+    livenessStats = { checked: 0, cacheHits: 0, escalated: 0, staleFlipped: 0, unknownCapped: 0, live: 0, unknown: 0, quarantineSwept: 0 };
+    // Pass A — active APPLY/REVIEW rows. Browser escalation ON; fail closed.
+    const active = finalRows.filter(r => !r._locked &&
       (r._verdict === 'pass' || r._verdict === 'cap_review') &&
       (r.recommendation === '🟢 APPLY' || r.recommendation === '🟡 REVIEW') && r.url);
-    if (toCheck.length > 0) {
-      console.log(`\nChecking liveness for ${toCheck.length} APPLY/REVIEW role(s)...`);
-      const { results, stats } = await checkLiveness(toCheck.map(r => r.url), { verbose: VERBOSE_LIVENESS });
-      livenessStats = { ...stats, staleFlipped: 0 };
-      for (const row of toCheck) {
+    if (active.length > 0) {
+      console.log(`\nChecking liveness for ${active.length} APPLY/REVIEW role(s)...`);
+      const { results, stats } = await checkLiveness(
+        active.map(r => ({ url: r.url, expectedTitle: r.role })),
+        { verbose: VERBOSE_LIVENESS, browser: !NO_LIVENESS_BROWSER });
+      livenessStats.checked += stats.checked; livenessStats.cacheHits += stats.cacheHits; livenessStats.escalated += stats.escalated || 0;
+      for (const row of active) {
+        const entry = results.get(row.url);
+        if (!entry) {
+          // No result at all → cannot confirm live → fail closed (never APPLY).
+          if (row._effectiveScore >= 4.0) { capUnverified(row, 'unverified'); livenessStats.unknownCapped++; }
+          continue;
+        }
+        row.liveness = entry;
+        if (entry.result === 'stale') { markClosed(row, entry); livenessStats.staleFlipped++; }
+        else if (entry.result === 'live') { livenessStats.live++; }
+        else {
+          // unknown → fail closed: cap below APPLY.
+          livenessStats.unknown++;
+          if (row._effectiveScore >= 4.0 || row.recommendation === '🟢 APPLY') { capUnverified(row, 'unverified'); livenessStats.unknownCapped++; }
+        }
+      }
+    }
+    // Pass B — sweep QUARANTINED rows for DEAD listings so they leave quarantine as
+    // ❌ Closed instead of accumulating (soft-404 WWR reposts, whatjobs search-page
+    // redirects, since-filled ATS postings). HTTP-only (browser:false) to bound cost;
+    // a 403 aggregator stays 'unknown' → stays quarantined (still unverifiable) —
+    // the correct fail-closed outcome.
+    const quarantined = finalRows.filter(r => !r._locked && r._verdict === 'quarantine' && r.url);
+    if (quarantined.length > 0) {
+      console.log(`Sweeping liveness for ${quarantined.length} quarantined role(s) (dead → Closed)...`);
+      const { results, stats } = await checkLiveness(
+        quarantined.map(r => ({ url: r.url, expectedTitle: r.role })),
+        { verbose: false, browser: false });
+      livenessStats.checked += stats.checked; livenessStats.cacheHits += stats.cacheHits;
+      livenessStats.quarantineSwept = quarantined.length;
+      for (const row of quarantined) {
         const entry = results.get(row.url);
         if (!entry) continue;
         row.liveness = entry;
-        if (entry.result === 'stale') {
-          const originalAdded = (row.added || '').split(' (stale:')[0].trim();
-          row.added = `${originalAdded} (stale: ${entry.reason})`;
-          row.status = '❌ Closed';
-          row.recommendation = '❌ Closed';
-          row._locked = true;
-          livenessStats.staleFlipped++;
-        }
+        if (entry.result === 'stale') { markClosed(row, entry); livenessStats.staleFlipped++; }
+      }
+    }
+  } else {
+    // Liveness skipped → no role can be confirmed live → nothing may sit in APPLY
+    // (the invariant holds even in fast-iteration mode).
+    for (const row of finalRows) {
+      if (!row._locked && (row._verdict === 'pass' || row._verdict === 'cap_review') && row._effectiveScore >= 4.0) {
+        capUnverified(row, 'liveness skipped');
       }
     }
   }
@@ -1073,10 +1384,17 @@ async function main() {
     for (const r of finalRows) loc[r.locationClass] = (loc[r.locationClass] || 0) + 1;
     console.log(`\nLocation mix:   🌐 ${loc.Remote} Remote | 🏙️ ${loc.Hybrid} Hybrid | 🏢 ${loc.Onsite} Onsite | 📍 ${loc.Unknown} Unknown  (remote_only ON)`);
   }
+  if (jdStats) {
+    console.log(`\nJD fetch:       ${jdStats.fetched}/${jdStats.eligible} eligible fetched | ${jdStats.withJd} with JD text | ${jdStats.withLoc} with authoritative location`);
+  } else if (SKIP_JD_FETCH) {
+    console.log(`\nJD fetch:       skipped (--skip-jd-fetch) — JD-dependent gates fall back to title-only`);
+  }
   if (livenessStats) {
-    console.log(`\nLiveness:       ${livenessStats.checked} checked, ${livenessStats.cacheHits} cached, ${livenessStats.staleFlipped} flipped → ❌ Closed`);
+    console.log(`Liveness:       ${livenessStats.checked} checked, ${livenessStats.cacheHits} cached, ${livenessStats.escalated || 0} browser-escalated`);
+    console.log(`                🟢 ${livenessStats.live} live · 💀 ${livenessStats.staleFlipped} stale→Closed · ❓ ${livenessStats.unknown} unknown (${livenessStats.unknownCapped} capped <APPLY)`);
+    if (livenessStats.quarantineSwept) console.log(`                quarantine sweep: ${livenessStats.quarantineSwept} checked → dead ones moved to ❌ Closed`);
   } else if (SKIP_LIVENESS) {
-    console.log(`\nLiveness:       skipped (--skip-liveness)`);
+    console.log(`\nLiveness:       skipped (--skip-liveness) — APPLY capped to REVIEW (cannot confirm live)`);
   }
 
   // New top 10 by score (across the active list) — the dry-run headline.
@@ -1093,6 +1411,9 @@ export {
   classifyLevel, applyGates, computeScore, resolveLocation, locationFromUrl,
   sourceTier, getRecommendation, contentFitS1, isInternational, classifyLocation,
   evaluateRole, buildIndexes, SCORING,
+  // Evidence-Layer fix (V2.1) additions:
+  reconcileLevel, isSuspectAttribution, isAggregatorShell, livenessFloor,
+  isKnownCareersDomain, isKnownCompany,
 };
 
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
