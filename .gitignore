@@ -38,6 +38,8 @@ scrapers/data/
 *.log
 *.bak
 .liveness_cache.json
+# JD-body fetch cache (holds scanned target URLs + JD text — personal search data)
+.jd_cache.json
 
 # Secrets and API keys
 .env
