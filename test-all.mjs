@@ -598,8 +598,10 @@ console.log('\n5b. Scoring Model V2 (gates + weighted score)');
 
 try {
   const sp = await import(pathToFileURL(join(ROOT, 'score-and-publish.mjs')).href);
-  const { classifyLevel, evaluateRole, buildIndexes, computeScore, locationFromUrl } = sp;
+  const { classifyLevel, evaluateRole, buildIndexes, computeScore, locationFromUrl,
+    sourceTier, resolveLocation, reconcileLevel, isSuspectAttribution, livenessFloor } = sp;
   const { _internals: liveInt } = await import(pathToFileURL(join(ROOT, 'liveness-http.mjs')).href);
+  const { _internals: jdInt } = await import(pathToFileURL(join(ROOT, 'fetch-jd.mjs')).href);
 
   // Location gates (G3/G4/G5) only run when geographic.remote_only is on. The live
   // profile sets it; CI has no profile.yml (remote_only defaults off), so inject the
@@ -690,8 +692,10 @@ try {
     fail(`#7 gate-visibility invariant broke — topOrReview=${JSON.stringify(topOrReview)}`);
   }
 
-  // G11 JD-hash: identical JD body under two employers → both quarantined
-  const jd = 'Manage HubSpot, Marketo, Salesforce lifecycle campaigns and attribution reporting for enterprise B2B.';
+  // G11 JD-hash: identical (substantive) JD body under two employers → both quarantined.
+  // Must be >= 300 chars: only substantive JDs are hashed, so a short boilerplate
+  // shell can't collide across unrelated roles and spuriously trip G11.
+  const jd = 'We are seeking a Marketing Operations Manager to own our HubSpot, Marketo, and Salesforce lifecycle campaigns and attribution reporting for enterprise B2B demand generation. You will build and maintain nurture programs, manage lead scoring and routing, own the martech integration roadmap, and partner with sales operations on funnel analytics, dashboards, and pipeline reporting across the full customer lifecycle.';
   const dupA = { title: 'Marketing Operations Manager', company: 'Alpha Corp', url: 'https://a.com/jobs/1', location: 'Remote (US)', jd };
   const dupB = { title: 'Marketing Operations Manager', company: 'Beta LLC', url: 'https://b.com/jobs/1', location: 'Remote (US)', jd };
   const didx = buildIndexes([dupA, dupB]);
@@ -700,6 +704,98 @@ try {
   } else {
     fail('G11 JD-hash: duplicate JD across employers should quarantine both');
   }
+
+  // ══ Evidence Layer fix (V2.1) — RCA II acceptance set ═══════════════════════
+  // Fixtures are FICTIONAL companies on generic public domains (leak-check safe);
+  // each exercises the RCA II root cause named in the comment. GEO injects the
+  // remote-only policy + comp floor so gates fire deterministically in CI.
+  const GEO_FLOOR = { remoteOnly: true, metros: [], compFloor: 200000 };
+  const emptyIdx = { jdHashToCompanies: new Map(), t1Keys: new Set() };
+
+  // RC-3 / Task 3 — sourceTier FAILS CLOSED (default T3).
+  if (sourceTier('https://www.tealhq.com/job/x').tier === 3) pass('EL#1 sourceTier(teal aggregator) → T3 (was T1)');
+  else fail(`EL#1 sourceTier(teal) should be T3, got ${sourceTier('https://www.tealhq.com/job/x').tier}`);
+  if (sourceTier('https://boards.greenhouse.io/x/jobs/1').tier === 1) pass('EL#2 sourceTier(greenhouse ATS) → T1');
+  else fail('EL#2 sourceTier(greenhouse) should be T1');
+  if (sourceTier('https://some-domain-nobody-listed.com/job/1').tier === 3) pass('EL#3 sourceTier(unknown domain) → T3 (default untrusted)');
+  else fail('EL#3 unknown domain must default to T3, not T1');
+
+  // RC-4 / Task 4 — location weighted by source confidence.
+  const aggLoc = resolveLocation({ location: 'Remote', url: 'https://www.jobleads.com/us/job/x' });
+  if (aggLoc.confidence === 'low' && aggLoc.resolved === false) pass('EL#4 resolveLocation(aggregator-only "Remote") → low confidence → UNRESOLVED');
+  else fail(`EL#4 aggregator-only location should be low/unresolved, got ${JSON.stringify(aggLoc)}`);
+  const atsLoc = resolveLocation({ atsLocation: 'San Francisco, CA', url: 'https://job-boards.greenhouse.io/x/jobs/1' });
+  if (atsLoc.confidence === 'high' && atsLoc.resolved === true) pass('EL#5 resolveLocation(Greenhouse location.name) → high confidence → resolved');
+  else fail(`EL#5 ATS location should be high/resolved, got ${JSON.stringify(atsLoc)}`);
+  // Bad-data-beats-no-data case: an aggregator digest says "Remote" (low) but the
+  // JD says a specific metro + Hybrid (medium) → the JD wins → drop G3.
+  const fresh = { title: 'Director, Product', company: 'Everbright Software', url: 'https://www.tealhq.com/job/director-product', location: 'Remote', jd: 'This role is hybrid — 3 days a week in our San Mateo, CA office.' };
+  if (evaluateRole(fresh, buildIndexes([fresh]), undefined, GEO_FLOOR).gate.verdict === 'drop') pass('EL#5b digest "Remote" overridden by JD "metro Hybrid" → drop (G3), not published as Remote');
+  else fail('EL#5b JD-body hybrid location should override the aggregator "Remote" and drop on G3');
+
+  // RC-2 / Task 2 — soft-404 + liveness fails closed.
+  const soft404Body = 'Browse 250 remote product and marketing jobs. Filter by category, salary, and company. '.repeat(15);
+  if (liveInt.classifyHttpLiveness({ url: 'https://weworkremotely.com/remote-jobs/x-integrations-lead', status: 200, body: soft404Body, expectedTitle: 'Application Platform Integrations Lead' }).result === 'stale') {
+    pass('EL#6 soft-404: HTTP 200 but body missing the role title → stale');
+  } else {
+    fail('EL#6 soft-404 should mark a 200 whose body dropped the role title as stale');
+  }
+  // Invariant: an unknown-liveness role can NEVER hold an effective score >= 4.0.
+  if (livenessFloor(4.6, 'unknown') < 4.0 && livenessFloor(4.6, 'stale') < 4.0 && livenessFloor(4.6, 'live') === 4.6) {
+    pass('EL#7 liveness fails closed: unknown/stale capped < 4.0; only "live" keeps APPLY');
+  } else {
+    fail(`EL#7 liveness floor broken: unknown=${livenessFloor(4.6, 'unknown')}, live=${livenessFloor(4.6, 'live')}`);
+  }
+  if (liveInt.AGGREGATOR_DOMAINS.has('weworkremotely.com')) pass('EL#7b WWR added to AGGREGATOR_DOMAINS (a 200 cannot assert live)');
+  else fail('EL#7b weworkremotely.com must be an aggregator domain');
+
+  // RC-5 / Task 5 — generalized G11 legitimacy.
+  const tryApply = { title: 'Head of Marketing Operations Remote', company: 'TryApplyNow', url: 'https://jooble.org/jdp/123', location: 'Remote (US)' };
+  if (evaluateRole(tryApply, buildIndexes([tryApply]), undefined, GEO_FLOOR).gate.verdict === 'quarantine') {
+    pass('EL#8 "TryApplyNow" apply-service shell on T3 → suspect attribution → quarantine');
+  } else {
+    fail('EL#8 aggregator-shell employer should quarantine as suspect attribution');
+  }
+  // Guard against over-flagging: a plausibly-real unknown company on T3 is NOT suspect.
+  if (isSuspectAttribution('Everbright Software', 'Director, Product', 3) === false) pass('EL#8b plausible unknown company on T3 is NOT over-flagged as suspect');
+  else fail('EL#8b a plausibly-real employer must not be flagged suspect merely for being T3');
+
+  // RC-6 / Task 6 — reconcile scraped title against the JD's own title.
+  const recon = reconcileLevel('Head of Marketing Operations Remote', 'Marketing Operations Manager');
+  if (recon.inflated === true && /MktOps$/.test(recon.level.level)) {
+    pass('EL#9 title reconciliation: scraped "Head of…" + JD "…Manager" → re-classified from JD (inflated flagged)');
+  } else {
+    fail(`EL#9 title reconciliation broke: ${JSON.stringify(recon)}`);
+  }
+
+  // G12 canonical resolution: a T3-aggregator mirror whose fetched JD points at a
+  // Greenhouse T1 canonical resolves to first-party → G12 no longer caps it. The
+  // SAME role WITHOUT the canonical stays G12-capped — a true before/after.
+  const mirrorBase = { title: 'Principal Product Manager, API and Platform', company: 'Rivertown Audio', url: 'https://www.jobleads.com/us/job/principal-pm-api-platform--remote--9f8e7d6c5b4a', location: 'Remote (US)', jd: 'Own the API platform roadmap. AI product strategy, developer platform, evals.' };
+  const noCanon = evaluateRole({ ...mirrorBase }, buildIndexes([{ ...mirrorBase }]), undefined, GEO_FLOOR).gate.reasons.join(';');
+  const withCanon = { ...mirrorBase, canonicalUrl: 'https://boards.greenhouse.io/rivertown/jobs/4455' };
+  const withReasons = evaluateRole(withCanon, buildIndexes([withCanon]), undefined, GEO_FLOOR).gate.reasons.join(';');
+  if (/G12/.test(noCanon) && !/G12/.test(withReasons)) {
+    pass('EL#10 T3 mirror capped by G12; with a Greenhouse canonical in its JD → G12 resolved (T3→T1)');
+  } else {
+    fail(`EL#10 G12 canonical resolution broke: noCanon="${noCanon}" withCanon="${withReasons}"`);
+  }
+
+  // PROMOTION (the fix must PROMOTE, not only drop): a Lever ATS role with an
+  // authoritative "Remote — North America" location LEAVES quarantine → REVIEW/APPLY.
+  const promo = { title: 'Principal Product Manager, Agentic Surfaces', company: 'Auroria Audio', url: 'https://jobs.lever.co/auroria/abc123', atsLocation: 'Remote — North America', jsonldLocationType: 'TELECOMMUTE', jd: 'Own the agentic surfaces roadmap. AI product strategy, platform, evals, LLM.' };
+  const promoEv = evaluateRole(promo, buildIndexes([promo]), undefined, GEO_FLOOR);
+  if ((promoEv.gate.verdict === 'pass' || promoEv.gate.verdict === 'cap_review') && promoEv.loc.resolved && promoEv.loc.cls === 'Remote') {
+    pass(`EL#11 PROMOTION: Lever ATS "Remote — North America" resolves G5 → leaves quarantine (verdict=${promoEv.gate.verdict}, ~${promoEv.effective})`);
+  } else {
+    fail(`EL#11 promotion path broke: verdict=${promoEv.gate.verdict}, loc=${JSON.stringify(promoEv.loc)}`);
+  }
+
+  // fetch-jd ATS fast-path URL construction (pure — no network).
+  if (jdInt.greenhouseApi('https://job-boards.greenhouse.io/acme/jobs/123') === 'https://boards-api.greenhouse.io/v1/boards/acme/jobs/123') pass('EL#12 fetch-jd maps a Greenhouse job URL → boards-api endpoint');
+  else fail('EL#12 greenhouseApi URL construction broke');
+  if (/api\.lever\.co\/v0\/postings\/acme\//.test(jdInt.leverApi('https://jobs.lever.co/acme/0a1b2c3d4e5f6071') || '')) pass('EL#13 fetch-jd maps a Lever job URL → Lever postings API');
+  else fail('EL#13 leverApi URL construction broke');
 
 } catch (e) {
   fail(`Scoring Model V2 tests crashed: ${e.message}\n${(e.stack || '').split('\n').slice(0, 4).join('\n')}`);
