@@ -71,9 +71,14 @@ function slugify(s) {
 
 // ── HTML helpers ───────────────────────────────────────────────────────────
 function stripHtml(html) {
+  // Closing tags use [^>]* (not a bare </script>) so tolerant end tags —
+  // "</script >", "</script\n>", "</script foo>" — are still removed. A bare
+  // </script> pattern is flagged by CodeQL js/bad-tag-filter (a page could hide
+  // content behind a spaced end tag); over-stripping is the safe direction here,
+  // and this text is only used for extraction/hashing, never re-rendered as HTML.
   return String(html || '')
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
